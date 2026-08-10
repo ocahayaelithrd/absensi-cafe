@@ -1,0 +1,1651 @@
+<title>Absensi Cafe</title>
+<script>
+/* <head> dibuat oleh pembungkus halaman, jadi meta viewport & bahasa dipasang dari sini
+   supaya file ini juga benar saat dibuka langsung di HP. */
+(function(){
+  document.documentElement.lang = "id";
+  if(!document.querySelector('meta[name="viewport"]')){
+    var m = document.createElement("meta");
+    m.name = "viewport";
+    m.content = "width=device-width, initial-scale=1, viewport-fit=cover";
+    document.head.appendChild(m);
+  }
+})();
+</script>
+<style>
+:root{
+  --bg:#F0F2EE; --bg2:#E5E9E1; --surface:#FFFFFF; --line:#D9DED4; --line2:#C1C9B8;
+  --text:#161C15; --muted:#5E6A5C; --faint:#8A958A;
+  --accent:#B5761B; --accent-ink:#7A4E0C; --accent-soft:#F7ECD9;
+  --ok:#1C8A52; --ok-soft:#DEF0E5;
+  --late:#B93A57; --late-soft:#FADFE5;
+  --ot:#0D7A87; --ot-soft:#D8EFF2;
+  --off:#77826F; --off-soft:#E7EAE3;
+  --shadow:0 1px 2px rgba(20,28,18,.06), 0 8px 24px -12px rgba(20,28,18,.18);
+  --f-ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --f-mono:"Roboto Mono",ui-monospace,SFMono-Regular,"DejaVu Sans Mono","Droid Sans Mono",Menlo,Consolas,monospace;
+  --r:14px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0C110D; --bg2:#111713; --surface:#161D18; --line:#242D26; --line2:#354034;
+    --text:#E7EDE6; --muted:#97A396; --faint:#6B776A;
+    --accent:#E0A544; --accent-ink:#F2C67E; --accent-soft:#2B2216;
+    --ok:#3FC486; --ok-soft:#12291E;
+    --late:#F0798F; --late-soft:#2D161C;
+    --ot:#48C3CF; --ot-soft:#0F2427;
+    --off:#7E8A7C; --off-soft:#1C221D;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#F0F2EE; --bg2:#E5E9E1; --surface:#FFFFFF; --line:#D9DED4; --line2:#C1C9B8;
+  --text:#161C15; --muted:#5E6A5C; --faint:#8A958A;
+  --accent:#B5761B; --accent-ink:#7A4E0C; --accent-soft:#F7ECD9;
+  --ok:#1C8A52; --ok-soft:#DEF0E5; --late:#B93A57; --late-soft:#FADFE5;
+  --ot:#0D7A87; --ot-soft:#D8EFF2; --off:#77826F; --off-soft:#E7EAE3;
+  --shadow:0 1px 2px rgba(20,28,18,.06), 0 8px 24px -12px rgba(20,28,18,.18);
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#0C110D; --bg2:#111713; --surface:#161D18; --line:#242D26; --line2:#354034;
+  --text:#E7EDE6; --muted:#97A396; --faint:#6B776A;
+  --accent:#E0A544; --accent-ink:#F2C67E; --accent-soft:#2B2216;
+  --ok:#3FC486; --ok-soft:#12291E; --late:#F0798F; --late-soft:#2D161C;
+  --ot:#48C3CF; --ot-soft:#0F2427; --off:#7E8A7C; --off-soft:#1C221D;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--f-ui);
+  -webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+.shell{max-width:520px;margin-inline:auto;padding:0 14px calc(84px + env(safe-area-inset-bottom))}
+
+/* ---- header ---- */
+.top{padding:18px 2px 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.brand{min-width:0}
+.brand h1{margin:0;font-family:var(--f-mono);font-weight:700;font-size:15px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);text-wrap:balance;overflow-wrap:anywhere}
+.brand .date{margin-top:3px;font-size:12.5px;color:var(--muted)}
+.clock{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:700;
+  font-size:30px;letter-spacing:-.02em;line-height:1;text-align:right;white-space:nowrap}
+.clock .sec{font-size:15px;font-weight:500;color:var(--faint);margin-left:1px}
+
+/* ---- generic ---- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.lbl{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.stack{display:flex;flex-direction:column}
+.row{display:flex;align-items:center}
+.grow{flex:1;min-width:0}
+.hr{height:1px;background:var(--line);border:0;margin:0}
+.dash{border:0;border-top:1px dashed var(--line2);margin:0}
+
+/* ---- summary strip ---- */
+.strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.strip div{background:var(--surface);padding:9px 6px 10px;text-align:center}
+.strip b{display:block;font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:19px;font-weight:700;line-height:1.1}
+.strip span{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.strip .v-ok b{color:var(--ok)} .strip .v-late b{color:var(--late)} .strip .v-off b{color:var(--off)}
+
+/* ---- employee grid ---- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.emp{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:12px 11px 11px;text-align:left;cursor:pointer;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:8px;transition:transform .12s ease,border-color .12s ease}
+.emp:active{transform:scale(.975)}
+.emp[data-state="kerja"]{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.emp[data-state="alert"]{border-color:color-mix(in srgb,var(--late) 45%,var(--line))}
+.ava{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--bg2);border:1px solid var(--line);
+  display:grid;place-items:center;font-family:var(--f-mono);font-weight:700;font-size:15px;color:var(--muted);flex:none}
+.emp .nm{font-weight:600;font-size:14.5px;line-height:1.25;overflow-wrap:anywhere}
+.emp .ro{font-size:11.5px;color:var(--muted);line-height:1.3}
+.emp .sch{font-family:var(--f-mono);font-size:11px;color:var(--faint);letter-spacing:.02em}
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--f-mono);font-size:10px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.c-belum{background:var(--off-soft);color:var(--off)}
+.c-kerja{background:var(--ok-soft);color:var(--ok)}
+.c-selesai{background:var(--accent-soft);color:var(--accent-ink)}
+.c-telat{background:var(--late-soft);color:var(--late)}
+.c-ot{background:var(--ot-soft);color:var(--ot)}
+.c-kerja::before{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- buttons ---- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line2);
+  background:var(--surface);color:var(--text);border-radius:11px;padding:11px 14px;font-weight:600;font-size:14px;
+  cursor:pointer;text-align:center;transition:transform .1s ease}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#1B1305;font-weight:700}
+:root[data-theme="dark"] .btn.pri,.btn.pri{color:#201606}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.dgr{background:transparent;border-color:color-mix(in srgb,var(--late) 55%,var(--line));color:var(--late)}
+.btn.ghost{background:transparent;border-color:var(--line)}
+.btn.blk{width:100%}
+.btn.sm{padding:8px 11px;font-size:13px;border-radius:9px}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btnrow{display:flex;gap:8px}
+.btnrow>*{flex:1}
+
+/* ---- tabs ---- */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:40;background:color-mix(in srgb,var(--bg) 86%,transparent);
+  backdrop-filter:blur(12px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.nav .in{max-width:520px;margin-inline:auto;display:grid;grid-template-columns:1fr 1fr;gap:0}
+.nav button{background:none;border:0;padding:11px 0 12px;cursor:pointer;color:var(--muted);
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;
+  border-top:2px solid transparent;margin-top:-1px}
+.nav button[aria-current="true"]{color:var(--accent);border-top-color:var(--accent)}
+
+/* ---- segmented ---- */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:11px;padding:3px;margin-bottom:14px}
+.seg button{background:none;border:0;padding:8px 4px;border-radius:8px;cursor:pointer;color:var(--muted);
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.seg button[aria-current="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+
+/* ---- forms ---- */
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field>label{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.field .hint{font-size:11.5px;color:var(--muted);line-height:1.4}
+input[type=text],input[type=time],input[type=number],input[type=month],input[type=date],input[type=password],select,textarea{
+  width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 11px;font-size:15px}
+input[type=time],input[type=number],input[type=month],input[type=date]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+textarea{resize:vertical;min-height:64px;font-size:14px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.days{display:flex;gap:5px;flex-wrap:wrap}
+.day{flex:1;min-width:38px;text-align:center;padding:8px 2px;border:1px solid var(--line);border-radius:9px;
+  background:var(--bg2);font-family:var(--f-mono);font-size:11px;font-weight:600;cursor:pointer;letter-spacing:.04em}
+.day[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0}
+.sw{width:46px;height:27px;border-radius:999px;background:var(--line2);border:0;position:relative;cursor:pointer;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-pressed="true"]{background:var(--ok)}
+.sw[aria-pressed="true"]::after{transform:translateX(19px)}
+
+/* ---- list rows (receipt) ---- */
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.item{display:flex;align-items:center;gap:11px;padding:11px 12px;width:100%;background:none;border:0;
+  border-bottom:1px dashed var(--line2);text-align:left;cursor:pointer}
+.item:last-child{border-bottom:0}
+.item .t1{font-weight:600;font-size:14px;overflow-wrap:anywhere}
+.item .t2{font-size:11.5px;color:var(--muted);margin-top:1px}
+.tm{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;white-space:nowrap}
+
+/* ---- table ---- */
+.twrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow);-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px dashed var(--line2)}
+th{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+  font-weight:600;background:var(--bg2);border-bottom:1px solid var(--line);position:sticky;top:0}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);
+  box-shadow:1px 0 0 var(--line);max-width:130px;overflow:hidden;text-overflow:ellipsis}
+th:first-child{background:var(--bg2)}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tbody tr{cursor:pointer}
+
+/* ---- empty / notes ---- */
+.empty{text-align:center;padding:34px 20px;color:var(--muted);font-size:13.5px;line-height:1.6}
+.empty .big{font-family:var(--f-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+.note{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);
+  border-radius:11px;padding:11px 12px;font-size:12.5px;line-height:1.5;color:var(--text)}
+.note.warn{background:var(--late-soft);border-color:color-mix(in srgb,var(--late) 32%,transparent)}
+.sect{margin:20px 0 9px;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.sect h2{margin:0;font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+
+/* ---- sheet ---- */
+.scrim{position:fixed;inset:0;background:rgba(8,12,8,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.scrim.pin{z-index:70}
+.sheet{width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:var(--bg);
+  border-radius:20px 20px 0 0;border:1px solid var(--line);border-bottom:0;
+  padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:up .22s cubic-bezier(.2,.8,.3,1)}
+@keyframes up{from{transform:translateY(24px);opacity:.4}}
+.handle{width:36px;height:4px;border-radius:2px;background:var(--line2);margin:6px auto 12px}
+.sheet h3{margin:0 0 3px;font-size:18px;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.sheet .sub{color:var(--muted);font-size:12.5px;margin-bottom:16px}
+
+/* ---- pin ---- */
+.pindots{display:flex;gap:11px;justify-content:center;margin:18px 0 20px}
+.pindot{width:13px;height:13px;border-radius:50%;border:1.5px solid var(--line2)}
+.pindot.on{background:var(--accent);border-color:var(--accent)}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.keys button{padding:16px 0;font-family:var(--f-mono);font-size:21px;font-weight:600;background:var(--surface);
+  border:1px solid var(--line);border-radius:12px;cursor:pointer}
+.keys button:active{background:var(--bg2)}
+.keys .aux{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* ---- camera ---- */
+.cam{position:fixed;inset:0;z-index:60;background:#070907;display:flex;flex-direction:column}
+.cam .chead{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;color:#EDF1EA}
+.cam .chead .t{flex:1;min-width:0}
+.cam .chead .n{font-weight:700;font-size:15px;overflow-wrap:anywhere}
+.cam .chead .a{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#E0A544}
+.xbtn{background:rgba(255,255,255,.12);border:0;color:#EDF1EA;width:34px;height:34px;border-radius:50%;
+  font-size:18px;line-height:1;cursor:pointer;flex:none}
+.stage{position:relative;width:100%;aspect-ratio:1;background:#000;overflow:hidden;flex:none}
+.stage video,.stage canvas,.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.stage video{transform:scaleX(-1)}
+.stage img.shot{transform:scaleX(-1)}
+.oval{position:absolute;left:19%;top:14%;width:62%;height:62%;border-radius:50%;
+  box-shadow:0 0 0 9999px rgba(0,0,0,.5);border:2px dashed rgba(255,255,255,.55);transition:border-color .2s}
+.oval.lock{border-color:#3FC486;border-style:solid}
+.count{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-mono);font-size:88px;
+  font-weight:700;color:#fff;text-shadow:0 2px 20px rgba(0,0,0,.7)}
+.flash{position:absolute;inset:0;background:#fff;animation:fl .35s ease-out forwards}
+@keyframes fl{from{opacity:.85}to{opacity:0}}
+.cstat{color:#CBD3C6;font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-align:center;padding:14px 16px 4px;min-height:44px}
+.cstat b{color:#EDF1EA}
+.cbody{flex:1;overflow-y:auto;padding:0 16px calc(18px + env(safe-area-inset-bottom))}
+.score{text-align:center;padding:6px 0 14px}
+.score .pct{font-family:var(--f-mono);font-size:44px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.score .vd{font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-top:7px;font-weight:600}
+.score.pass .pct,.score.pass .vd{color:#3FC486}
+.score.fail .pct,.score.fail .vd{color:#F0798F}
+.shots{display:flex;gap:8px;justify-content:center;padding:10px 0 4px}
+.shots div{width:52px;height:52px;border-radius:10px;border:1.5px dashed rgba(255,255,255,.3);overflow:hidden;
+  display:grid;place-items:center;font-family:var(--f-mono);font-size:12px;color:rgba(255,255,255,.4)}
+.shots img{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam .btn{border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#EDF1EA}
+.cam .btn.pri{background:var(--accent);border-color:var(--accent);color:#201606}
+.cam .btn.ok{background:#1C8A52;border-color:#1C8A52;color:#fff}
+.rank{list-style:none;margin:0;padding:0;color:#DDE3D9}
+.rank li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.14);font-size:14px}
+.rank b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;margin-left:auto}
+
+/* ---- toast ---- */
+.toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  z-index:80;background:var(--text);color:var(--bg);padding:11px 17px;border-radius:999px;font-size:13.5px;
+  font-weight:600;box-shadow:var(--shadow);max-width:88vw;text-align:center;animation:up .2s ease}
+.photo{width:100%;border-radius:11px;border:1px solid var(--line);display:block;transform:scaleX(-1)}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.pgrid figure{margin:0}
+.pgrid figcaption{font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+</style>
+
+<div class="shell">
+  <header class="top">
+    <div class="brand">
+      <h1 id="cafeName">Absensi Cafe</h1>
+      <div class="date" id="today"></div>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+  <main id="view"></main>
+</div>
+
+<nav class="nav"><div class="in">
+  <button data-act="tab" data-tab="absen" aria-current="true">Absen</button>
+  <button data-act="tab" data-tab="admin" aria-current="false">Admin</button>
+</div></nav>
+
+<div id="layer"></div>
+<div id="pinlayer"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   Absensi Cafe — kiosk absensi satu HP dengan verifikasi wajah
+   Semua data tersimpan di HP ini (localStorage + IndexedDB).
+   ============================================================ */
+
+/* ---------- util ---------- */
+const $ = s => document.querySelector(s);
+const el = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,"0");
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const DAYS = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const MONTHS = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+const dkey = (d=new Date()) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseHM = s => { const [a,b] = String(s||"0:0").split(":").map(Number); return (a||0)*60+(b||0); };
+const hm = ts => { const d = new Date(ts); return pad(d.getHours())+":"+pad(d.getMinutes()); };
+const fmtDur = m => { m = Math.max(0,Math.round(m||0)); return `${Math.floor(m/60)}j ${pad(m%60)}m`; };
+const fmtJam = m => (Math.max(0,m||0)/60).toFixed(1).replace(".",",");
+const longDate = k => { const [y,m,d] = k.split("-").map(Number); const dt = new Date(y,m-1,d);
+  return `${DAYS[dt.getDay()]}, ${d} ${MONTHS[m-1]} ${y}`; };
+const shortDate = k => { const [y,m,d] = k.split("-").map(Number); const dt = new Date(y,m-1,d);
+  return `${DAYS[dt.getDay()]} ${pad(d)}/${pad(m)}`; };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const initials = n => String(n||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+
+/* ---------- penyimpanan ---------- */
+const LS = "absensi_cafe_v1";
+let storageOK = true;
+const DEFAULTS = {
+  settings:{ cafeName:"Absensi Cafe", pin:"1234", tolerance:10, minOvertime:30,
+             faceMode:"warn", faceThreshold:65, retention:60 },
+  employees:[], records:[]
+};
+let db = JSON.parse(JSON.stringify(DEFAULTS));
+
+function loadDB(){
+  try{
+    const raw = localStorage.getItem(LS);
+    if(raw){ const p = JSON.parse(raw);
+      db.settings = Object.assign({}, DEFAULTS.settings, p.settings||{});
+      db.employees = Array.isArray(p.employees) ? p.employees : [];
+      db.records  = Array.isArray(p.records)  ? p.records  : [];
+    }
+  }catch(e){ storageOK = false; }
+}
+let saveT = null;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(()=>{
+    try{ localStorage.setItem(LS, JSON.stringify(db)); }
+    catch(e){ storageOK = false; toast("Penyimpanan penuh — hapus foto lama di Pengaturan"); }
+  },60);
+}
+
+/* foto disimpan di IndexedDB agar tidak membebani localStorage */
+const memPhotos = new Map();
+let idbP;
+function idb(){
+  if(idbP) return idbP;
+  idbP = new Promise(res=>{
+    let r; try{ r = indexedDB.open("absensi_cafe",1); }catch(e){ return res(null); }
+    r.onupgradeneeded = () => { try{ r.result.createObjectStore("photos"); }catch(e){} };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => res(null);
+    setTimeout(()=>res(null), 3000);
+  });
+  return idbP;
+}
+async function photoSet(k,v){
+  const d = await idb();
+  if(!d){ memPhotos.set(k,v); return; }
+  return new Promise(res=>{
+    try{ const t = d.transaction("photos","readwrite");
+      t.objectStore("photos").put(v,k); t.oncomplete=()=>res(); t.onerror=()=>{memPhotos.set(k,v);res();};
+    }catch(e){ memPhotos.set(k,v); res(); }
+  });
+}
+async function photoGet(k){
+  const d = await idb();
+  if(!d) return memPhotos.get(k) || null;
+  return new Promise(res=>{
+    try{ const t = d.transaction("photos","readonly"); const q = t.objectStore("photos").get(k);
+      q.onsuccess = () => res(q.result || memPhotos.get(k) || null); q.onerror = () => res(null);
+    }catch(e){ res(memPhotos.get(k)||null); }
+  });
+}
+async function photoDel(k){
+  memPhotos.delete(k);
+  const d = await idb(); if(!d) return;
+  try{ const t = d.transaction("photos","readwrite"); t.objectStore("photos").delete(k); }catch(e){}
+}
+
+/* ---------- jadwal, telat, lembur ---------- */
+function tolOf(emp){ const t = emp.tolerance; return (t===null||t===undefined||t==="") ? db.settings.tolerance : Number(t); }
+function schedule(emp, dateKey){
+  const [y,m,d] = dateKey.split("-").map(Number);
+  const start = new Date(y, m-1, d, 0, 0, 0, 0);
+  start.setMinutes(parseHM(emp.jamMasuk));
+  let span = (parseHM(emp.jamPulang) - parseHM(emp.jamMasuk) + 1440) % 1440;
+  if(span === 0) span = 1440;
+  return { start, end:new Date(start.getTime() + span*60000), span };
+}
+function recalc(rec){
+  const emp = db.employees.find(e => e.id === rec.empId);
+  if(!emp) return rec;
+  const s = schedule(emp, rec.date);
+  rec.lateMin = rec.inAt ? Math.max(0, Math.round((rec.inAt - s.start.getTime())/60000) - tolOf(emp)) : 0;
+  if(rec.outAt){
+    rec.workMin  = Math.max(0, Math.round((rec.outAt - rec.inAt)/60000));
+    rec.earlyMin = Math.max(0, Math.round((s.end.getTime() - rec.outAt)/60000));
+    const ot = Math.max(0, Math.round((rec.outAt - s.end.getTime())/60000));
+    rec.otMin = ot >= Number(db.settings.minOvertime||0) ? ot : 0;
+  } else { rec.workMin = 0; rec.earlyMin = 0; rec.otMin = 0; }
+  return rec;
+}
+function recalcAll(){ db.records.forEach(recalc); }
+function openRecord(empId){
+  const cutoff = Date.now() - 26*3600*1000;
+  return db.records.filter(r => r.empId===empId && !r.outAt && r.inAt > cutoff)
+                   .sort((a,b)=>b.inAt-a.inAt)[0] || null;
+}
+function todayRecords(empId){ const k = dkey(); return db.records.filter(r => r.empId===empId && r.date===k); }
+function empState(emp){
+  const open = openRecord(emp.id);
+  if(open){
+    const stale = Date.now() - open.inAt > 16*3600*1000;
+    return { key: stale ? "alert" : "kerja", rec: open, stale };
+  }
+  const done = todayRecords(emp.id).filter(r=>r.outAt).sort((a,b)=>b.outAt-a.outAt)[0];
+  if(done) return { key:"selesai", rec:done };
+  return { key:"belum", rec:null };
+}
+function worksOn(emp, dateKey){
+  const [y,m,d] = dateKey.split("-").map(Number);
+  return !!(emp.days && emp.days[new Date(y,m-1,d).getDay()]);
+}
+
+/* ============================================================
+   MESIN PENCOCOKAN WAJAH
+   Deskriptor: HOG 6x6 sel x 8 arah (288 dim) + peta intensitas
+   12x12 (144 dim), keduanya dinormalisasi L2. Kemiripan = dot
+   product (kosinus). Berjalan sepenuhnya offline di HP.
+   ============================================================ */
+const FACE_BASE = 0.62;            // dasar kemiripan HOG antar-wajah apa pun
+const toPct = dot => Math.round(Math.max(0, Math.min(1, (dot - FACE_BASE)/(1 - FACE_BASE))) * 100);
+
+let detector = null, detectorReady = false;
+function getDetector(){
+  if(detectorReady) return detector;
+  detectorReady = true;
+  try{ if("FaceDetector" in window) detector = new window.FaceDetector({fastMode:true, maxDetectedFaces:1}); }
+  catch(e){ detector = null; }
+  return detector;
+}
+const FALLBACK_BOX = { cx:0.5, cy:0.45, side:0.62 };   // sepadan dengan oval panduan
+
+async function detectBox(canvas){
+  const d = getDetector();
+  const W = canvas.width, H = canvas.height;
+  if(d){
+    try{
+      const faces = await d.detect(canvas);
+      if(faces && faces.length){
+        const b = faces[0].boundingBox;
+        const side = Math.max(b.width, b.height) * 1.16;
+        const cx = b.x + b.width/2, cy = b.y + b.height/2;
+        return { box: clampBox(cx, cy, side, W, H), detected:true };
+      }
+      return { box: clampBox(FALLBACK_BOX.cx*W, FALLBACK_BOX.cy*H, FALLBACK_BOX.side*W, W, H), detected:false };
+    }catch(e){ detector = null; }
+  }
+  return { box: clampBox(FALLBACK_BOX.cx*W, FALLBACK_BOX.cy*H, FALLBACK_BOX.side*W, W, H), detected:null };
+}
+function clampBox(cx, cy, side, W, H){
+  side = Math.min(side, Math.min(W,H));
+  let x = cx - side/2, y = cy - side/2;
+  x = Math.max(0, Math.min(W - side, x));
+  y = Math.max(0, Math.min(H - side, y));
+  return { x, y, w:side, h:side };
+}
+
+function descriptor(src, box){
+  const S = 48, c = document.createElement("canvas");
+  c.width = S; c.height = S;
+  const ctx = c.getContext("2d", { willReadFrequently:true });
+  ctx.drawImage(src, box.x, box.y, box.w, box.h, 0, 0, S, S);
+  const px = ctx.getImageData(0,0,S,S).data;
+  const g = new Float32Array(S*S);
+  for(let i=0,p=0; i<g.length; i++, p+=4) g[i] = (0.299*px[p] + 0.587*px[p+1] + 0.114*px[p+2]) / 255;
+
+  let mean = 0; for(let i=0;i<g.length;i++) mean += g[i]; mean /= g.length;
+  const brightness = mean;
+  let sd = 0; for(let i=0;i<g.length;i++) sd += (g[i]-mean)**2; sd = Math.sqrt(sd/g.length) + 1e-6;
+  for(let i=0;i<g.length;i++) g[i] = (g[i]-mean)/sd;
+
+  const CELL = 8, NC = S/CELL, BINS = 8;
+  const hog = new Float32Array(NC*NC*BINS);
+  for(let y=1;y<S-1;y++) for(let x=1;x<S-1;x++){
+    const gx = g[y*S+x+1] - g[y*S+x-1];
+    const gy = g[(y+1)*S+x] - g[(y-1)*S+x];
+    const mag = Math.hypot(gx,gy);
+    if(mag < 1e-4) continue;
+    let a = Math.atan2(gy,gx); if(a < 0) a += Math.PI;
+    let b = Math.floor(a/Math.PI*BINS); if(b >= BINS) b = BINS-1;
+    hog[((y/CELL|0)*NC + (x/CELL|0))*BINS + b] += mag;
+  }
+  for(let i=0;i<NC*NC;i++){
+    let s = 0; for(let b=0;b<BINS;b++) s += hog[i*BINS+b]**2;
+    s = Math.sqrt(s) + 1e-6;
+    for(let b=0;b<BINS;b++) hog[i*BINS+b] /= s;
+  }
+  const P = 12, POOL = S/P, inten = new Float32Array(P*P);
+  for(let py=0;py<P;py++) for(let pxx=0;pxx<P;pxx++){
+    let s = 0;
+    for(let j=0;j<POOL;j++) for(let i=0;i<POOL;i++) s += g[(py*POOL+j)*S + pxx*POOL + i];
+    inten[py*P+pxx] = s/(POOL*POOL);
+  }
+  let nh = 0; for(let i=0;i<hog.length;i++) nh += hog[i]**2; nh = Math.sqrt(nh)+1e-6;
+  let ni = 0; for(let i=0;i<inten.length;i++) ni += inten[i]**2; ni = Math.sqrt(ni)+1e-6;
+  const W_INT = 0.55;
+  const out = new Float32Array(hog.length + inten.length);
+  for(let i=0;i<hog.length;i++) out[i] = hog[i]/nh;
+  for(let i=0;i<inten.length;i++) out[hog.length+i] = W_INT * inten[i]/ni;
+  let nf = 0; for(let i=0;i<out.length;i++) nf += out[i]**2; nf = Math.sqrt(nf)+1e-6;
+
+  const vec = new Array(out.length);
+  for(let i=0;i<out.length;i++) vec[i] = Math.round(out[i]/nf*10000)/10000;
+  return { vec, brightness };
+}
+function cosine(a,b){
+  if(!a || !b || a.length !== b.length) return 0;
+  let s = 0; for(let i=0;i<a.length;i++) s += a[i]*b[i];
+  return s;
+}
+function matchScore(vec, emp){
+  if(!emp.templates || !emp.templates.length) return null;
+  let best = -1;
+  for(const t of emp.templates) best = Math.max(best, cosine(vec, t));
+  return toPct(best);
+}
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){
+  const old = $(".toast"); if(old) old.remove();
+  const d = document.createElement("div");
+  d.className = "toast"; d.textContent = msg; d.setAttribute("role","status");
+  document.body.appendChild(d);
+  clearTimeout(toastT); toastT = setTimeout(()=>d.remove(), 3200);
+}
+
+/* ---------- lapisan sheet ---------- */
+function sheet(html){
+  el("layer").innerHTML =
+    `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-modal="true">
+       <div class="handle"></div>${html}</div></div>`;
+}
+function closeSheet(){ el("layer").innerHTML = ""; }
+
+/* ---------- PIN ----------
+   Lapisan sendiri agar tidak menimpa DOM kamera saat admin memberi izin. */
+let pinResolve = null, pinBuf = "";
+function closePin(){ el("pinlayer").innerHTML = ""; }
+function askPin(title, sub){
+  return new Promise(res=>{
+    pinResolve = res; pinBuf = "";
+    el("pinlayer").innerHTML =
+      `<div class="scrim pin" data-act="pinscrim"><div class="sheet" role="dialog" aria-modal="true">
+        <div class="handle"></div>
+        <h3>${esc(title)}</h3><div class="sub">${esc(sub||"Masukkan PIN admin")}</div>
+        <div class="pindots" id="pindots">${"<div class='pindot'></div>".repeat(4)}</div>
+        <div class="keys">
+          ${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="pin" data-k="${n}">${n}</button>`).join("")}
+          <button class="aux" data-act="pin" data-k="cancel">Batal</button>
+          <button data-act="pin" data-k="0">0</button>
+          <button class="aux" data-act="pin" data-k="del">Hapus</button>
+        </div></div></div>`;
+  });
+}
+function pinKey(k){
+  if(k === "cancel"){ closePin(); const r = pinResolve; pinResolve = null; if(r) r(null); return; }
+  if(k === "del"){ pinBuf = pinBuf.slice(0,-1); }
+  else if(pinBuf.length < 4){ pinBuf += k; }
+  const dots = el("pindots");
+  if(dots) [...dots.children].forEach((d,i)=>d.classList.toggle("on", i < pinBuf.length));
+  if(pinBuf.length === 4){
+    const val = pinBuf;
+    setTimeout(()=>{ closePin(); const r = pinResolve; pinResolve = null; if(r) r(val); }, 140);
+  }
+}
+
+/* ============================================================
+   KAMERA
+   ============================================================ */
+let cam = null;
+const CAM_SIZE = 480;
+
+async function openCam(opts){
+  // opts: {mode:'absen'|'enroll'|'test', empId, action:'masuk'|'pulang'}
+  cam = Object.assign({ shots:[], step:0, stream:null, timer:null, hits:0, counting:false, adminOK:false }, opts);
+  const emp = db.employees.find(e => e.id === opts.empId);
+  const title = opts.mode === "test" ? "Uji Kecocokan Wajah" : (emp ? emp.name : "Kamera");
+  const subtitle = opts.mode === "enroll" ? "Daftarkan wajah"
+                 : opts.mode === "test" ? "Bandingkan dengan semua karyawan"
+                 : (opts.action === "masuk" ? "Absen masuk" : "Absen pulang");
+
+  el("layer").innerHTML = `
+  <div class="cam" role="dialog" aria-modal="true">
+    <div class="chead">
+      <div class="t"><div class="n">${esc(title)}</div><div class="a">${esc(subtitle)}</div></div>
+      <button class="xbtn" data-act="camclose" aria-label="Tutup kamera">&times;</button>
+    </div>
+    <div class="stage" id="stage">
+      <video id="vid" playsinline autoplay muted></video>
+      <div class="oval" id="oval"></div>
+      <div id="fx"></div>
+    </div>
+    <div class="cstat" id="cstat">Menyiapkan kamera…</div>
+    <div class="cbody" id="cbody"></div>
+  </div>`;
+
+  const cbody = el("cbody");
+  try{
+    cam.stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:"user", width:{ideal:720}, height:{ideal:720} }, audio:false });
+    const v = el("vid");
+    v.srcObject = cam.stream;
+    await v.play().catch(()=>{});
+    cstat(getDetector() ? "Posisikan wajah di dalam oval" : "Posisikan wajah di dalam oval, lalu tekan Ambil Foto");
+    cbody.innerHTML = `<div class="btnrow"><button class="btn pri blk" data-act="shoot">Ambil Foto</button></div>
+      ${opts.mode === "enroll" ? shotsHTML() : ""}`;
+    if(getDetector()) cam.timer = setInterval(tick, 350);
+  }catch(e){
+    cam.noStream = true;
+    el("stage").innerHTML = `<div style="position:absolute;inset:0;display:grid;place-items:center;
+      color:#9AA697;font-family:var(--f-mono);font-size:12px;text-align:center;padding:24px">
+      Kamera langsung tidak tersedia.<br>Gunakan kamera bawaan HP.</div>`;
+    cstat("Tekan tombol di bawah untuk membuka kamera HP");
+    cbody.innerHTML = `
+      <label class="btn pri blk" style="cursor:pointer">Buka Kamera HP
+        <input type="file" accept="image/*" capture="user" id="filecap" hidden></label>
+      ${opts.mode === "enroll" ? shotsHTML() : ""}`;
+    el("filecap").addEventListener("change", onFilePick);
+  }
+}
+function shotsHTML(){
+  return `<div class="shots">${[0,1,2].map(i=>{
+    const s = cam.shots[i];
+    return `<div>${s ? `<img src="${s.photo}" alt="">` : (i+1)}</div>`;
+  }).join("")}</div>
+  <div class="cstat" style="min-height:0;padding-top:2px">Ambil 3 foto: lurus, sedikit ke kiri, sedikit ke kanan</div>`;
+}
+function cstat(html){ const s = el("cstat"); if(s) s.innerHTML = html; }
+
+function closeCam(){
+  if(cam){
+    clearInterval(cam.timer);
+    if(cam.stream) cam.stream.getTracks().forEach(t=>t.stop());
+  }
+  cam = null;
+  el("layer").innerHTML = "";
+}
+
+function grabFrame(){
+  const c = document.createElement("canvas");
+  c.width = CAM_SIZE; c.height = CAM_SIZE;
+  const ctx = c.getContext("2d", { willReadFrequently:true });
+  const v = el("vid");
+  if(v && v.videoWidth){
+    const s = Math.min(v.videoWidth, v.videoHeight);
+    ctx.drawImage(v, (v.videoWidth-s)/2, (v.videoHeight-s)/2, s, s, 0, 0, CAM_SIZE, CAM_SIZE);
+  }
+  return c;
+}
+
+async function tick(){
+  if(!cam || cam.counting || cam.frozen) return;
+  const c = grabFrame();
+  const r = await detectBox(c);
+  const oval = el("oval");
+  if(!oval) return;
+  if(r.detected){
+    cam.hits++;
+    oval.classList.add("lock");
+    cstat(cam.hits < 3 ? "<b>Wajah terdeteksi</b> — tahan posisi…" : "<b>Siap</b>");
+    if(cam.hits >= 3){ cam.counting = true; countdown(3); }
+  }else{
+    cam.hits = 0; oval.classList.remove("lock");
+    cstat("Posisikan wajah di dalam oval");
+  }
+}
+function countdown(n){
+  if(!cam) return;
+  const fx = el("fx"); if(!fx) return;
+  if(n === 0){ fx.innerHTML = ""; capture(grabFrame()); return; }
+  fx.innerHTML = `<div class="count">${n}</div>`;
+  setTimeout(()=>countdown(n-1), 700);
+}
+function manualShoot(){
+  if(!cam || cam.frozen) return;
+  cam.counting = true;
+  capture(grabFrame());
+}
+function onFilePick(e){
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement("canvas");
+    c.width = CAM_SIZE; c.height = CAM_SIZE;
+    const ctx = c.getContext("2d", { willReadFrequently:true });
+    const s = Math.min(img.width, img.height);
+    ctx.drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, 0, 0, CAM_SIZE, CAM_SIZE);
+    capture(c, true);
+    URL.revokeObjectURL(img.src);
+  };
+  img.onerror = () => toast("Foto tidak bisa dibaca");
+  img.src = URL.createObjectURL(f);
+}
+
+async function capture(canvas, fromFile){
+  if(!cam) return;
+  cam.frozen = true;
+  clearInterval(cam.timer);
+  const fx = el("fx"); if(fx && !fromFile) fx.innerHTML = `<div class="flash"></div>`;
+
+  const r = await detectBox(canvas);
+  const d = descriptor(canvas, r.box);
+  const photo = shrink(canvas, 240, 0.62);
+
+  const stage = el("stage");
+  stage.innerHTML = `<img class="shot" src="${photo}" alt="Foto absen">`;
+
+  if(d.brightness < 0.2){
+    cstat("<b>Foto terlalu gelap</b> — nyalakan lampu, lalu ulangi");
+  }else if(r.detected === false){
+    cstat("Wajah tidak terdeteksi — memakai area oval");
+  }else{
+    cstat(r.detected === null ? "Foto diambil" : "<b>Wajah terdeteksi</b>");
+  }
+
+  cam.last = { vec:d.vec, photo, brightness:d.brightness, detected:r.detected };
+
+  if(cam.mode === "enroll")      renderEnroll();
+  else if(cam.mode === "test")   renderTest();
+  else                           renderVerify();
+}
+function shrink(canvas, size, q){
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  c.getContext("2d").drawImage(canvas, 0, 0, size, size);
+  return c.toDataURL("image/jpeg", q);
+}
+function retake(){
+  const opts = { mode:cam.mode, empId:cam.empId, action:cam.action,
+                 shots:cam.shots, adminOK:cam.adminOK };
+  closeCam();
+  openCam(opts);
+}
+
+function renderEnroll(){
+  el("cbody").innerHTML = `
+    ${shotsHTML()}
+    <div class="btnrow" style="margin-top:6px">
+      <button class="btn" data-act="retake">Ulangi</button>
+      <button class="btn ok" data-act="keepshot">Pakai Foto ${cam.shots.length+1}</button>
+    </div>`;
+}
+function keepShot(){
+  cam.shots.push(cam.last);
+  if(cam.shots.length >= 3){
+    const emp = db.employees.find(e => e.id === cam.empId);
+    if(emp){
+      emp.templates = cam.shots.map(s => s.vec);
+      emp.avatar = cam.shots[0].photo;
+      save();
+    }
+    const name = emp ? emp.name : "";
+    closeCam();
+    toast(`Wajah ${name} berhasil didaftarkan`);
+    render();
+    if(activeTab === "admin") openEmpForm(cam0EmpId);
+  }else{
+    retake();
+  }
+}
+let cam0EmpId = null;
+
+function renderTest(){
+  const scored = db.employees.filter(e => e.templates && e.templates.length)
+    .map(e => ({ e, s: matchScore(cam.last.vec, e) }))
+    .sort((a,b) => b.s - a.s);
+  const th = Number(db.settings.faceThreshold);
+  el("cbody").innerHTML = `
+    <div class="cstat" style="padding:4px 0 10px">Ambang saat ini: <b>${th}%</b></div>
+    ${scored.length ? `<ul class="rank">${scored.map(x =>
+      `<li><span>${esc(x.e.name)}</span><b style="color:${x.s>=th?"#3FC486":"#9AA697"}">${x.s}%</b></li>`).join("")}</ul>`
+      : `<div class="cstat">Belum ada karyawan dengan wajah terdaftar.</div>`}
+    <div class="btnrow" style="margin-top:14px">
+      <button class="btn" data-act="retake">Ulangi</button>
+      <button class="btn pri" data-act="camclose">Selesai</button>
+    </div>`;
+}
+
+function renderVerify(){
+  const emp = db.employees.find(e => e.id === cam.empId);
+  const mode = db.settings.faceMode;
+  const th = Number(db.settings.faceThreshold);
+  const hasTpl = emp && emp.templates && emp.templates.length;
+  const score = (mode === "off" || !hasTpl) ? null : matchScore(cam.last.vec, emp);
+  cam.score = score;
+  const pass = score === null ? true : score >= th;
+
+  let block = "";
+  if(score === null){
+    block = `<div class="cstat" style="padding:10px 0">${
+      mode === "off" ? "Verifikasi wajah dinonaktifkan — foto tetap disimpan sebagai bukti."
+                     : "Wajah belum didaftarkan untuk karyawan ini — foto tetap disimpan sebagai bukti."}</div>`;
+  }else{
+    block = `<div class="score ${pass?"pass":"fail"}">
+      <div class="pct">${score}%</div>
+      <div class="vd">${pass ? "Wajah cocok" : "Wajah tidak cocok"}</div></div>`;
+  }
+
+  let actions;
+  const blocked = !pass && mode === "strict" && !cam.adminOK;
+  if(blocked){
+    actions = `<div class="cstat" style="padding:2px 0 12px">Kecocokan di bawah ambang <b>${th}%</b>.
+        Coba lagi dengan pencahayaan lebih baik, atau minta izin admin.</div>
+      <div class="btnrow">
+        <button class="btn" data-act="retake">Ulangi</button>
+        <button class="btn pri" data-act="override">Izin Admin</button>
+      </div>`;
+  }else{
+    if(!pass) block += `<div class="cstat" style="padding:0 0 10px">Di bawah ambang ${th}% — absen tetap
+      dicatat dan ditandai untuk dicek admin.</div>`;
+    if(cam.adminOK) block += `<div class="cstat" style="padding:0 0 10px">Disetujui admin.</div>`;
+    actions = `<div class="btnrow">
+        <button class="btn" data-act="retake">Ulangi</button>
+        <button class="btn ok" data-act="saveabsen">Simpan Absen ${cam.action === "masuk" ? "Masuk" : "Pulang"}</button>
+      </div>`;
+  }
+  el("cbody").innerHTML = block + actions;
+}
+
+async function overrideAdmin(){
+  const pin = await askPin("Izin Admin", "Setujui absen meski wajah tidak cocok");
+  if(pin === null){ renderVerify(); return; }
+  if(pin !== String(db.settings.pin)){ toast("PIN salah"); renderVerify(); return; }
+  cam.adminOK = true;
+  renderVerify();
+}
+
+async function saveAbsen(){
+  const emp = db.employees.find(e => e.id === cam.empId);
+  if(!emp){ closeCam(); return; }
+  const now = Date.now();
+  const flagged = cam.score !== null && cam.score < Number(db.settings.faceThreshold);
+
+  if(cam.action === "masuk"){
+    const rec = { id:uid(), empId:emp.id, date:dkey(), inAt:now, outAt:null,
+      inScore:cam.score, outScore:null, inFlag:flagged, outFlag:false,
+      inAdmin:!!cam.adminOK, outAdmin:false, note:"", edited:false, hasIn:true, hasOut:false };
+    recalc(rec);
+    db.records.push(rec);
+    await photoSet(rec.id + ":in", cam.last.photo);
+    save();
+    const msg = rec.lateMin > 0 ? `Masuk ${hm(now)} — terlambat ${fmtDur(rec.lateMin)}` : `Masuk ${hm(now)} — tepat waktu`;
+    closeCam(); render(); toast(`${emp.name}: ${msg}`);
+  }else{
+    const rec = openRecord(emp.id);
+    if(!rec){ closeCam(); toast("Tidak ada absen masuk yang terbuka"); return; }
+    rec.outAt = now; rec.outScore = cam.score; rec.outFlag = flagged; rec.outAdmin = !!cam.adminOK; rec.hasOut = true;
+    recalc(rec);
+    await photoSet(rec.id + ":out", cam.last.photo);
+    save();
+    let msg = `Pulang ${hm(now)} — kerja ${fmtDur(rec.workMin)}`;
+    if(rec.otMin > 0) msg += `, lembur ${fmtDur(rec.otMin)}`;
+    closeCam(); render(); toast(`${emp.name}: ${msg}`);
+  }
+}
+
+/* ============================================================
+   TAMPILAN
+   ============================================================ */
+let activeTab = "absen";
+let adminUnlocked = false;
+let adminSec = "rekap";
+let period = new Date().toISOString().slice(0,7);
+let filterQ = "";
+
+function render(){
+  el("cafeName").textContent = db.settings.cafeName || "Absensi Cafe";
+  el("today").textContent = longDate(dkey());
+  document.querySelectorAll(".nav button").forEach(b =>
+    b.setAttribute("aria-current", String(b.dataset.tab === activeTab)));
+  el("view").innerHTML = activeTab === "absen" ? viewAbsen() : viewAdmin();
+}
+
+/* ---------- tab absen ---------- */
+function viewAbsen(){
+  const emps = db.employees.filter(e => e.active !== false);
+  if(!emps.length){
+    return `<div class="card"><div class="empty">
+      <div class="big">Belum ada karyawan</div>
+      Buka tab <b>Admin</b> → <b>Karyawan</b> untuk menambahkan karyawan cafe dan mendaftarkan wajah mereka.
+    </div></div>`;
+  }
+  const k = dkey();
+  let hadir = 0, telat = 0, belum = 0, kerja = 0;
+  const states = emps.map(e => {
+    const st = empState(e);
+    if(st.key === "belum") belum++;
+    else { hadir++; if(st.rec && st.rec.lateMin > 0) telat++; if(st.key === "kerja" || st.key === "alert") kerja++; }
+    return { e, st };
+  });
+  const q = filterQ.trim().toLowerCase();
+  const shown = q ? states.filter(x => x.e.name.toLowerCase().includes(q) || (x.e.role||"").toLowerCase().includes(q)) : states;
+
+  const feed = db.records.filter(r => r.date === k)
+    .flatMap(r => {
+      const emp = db.employees.find(e => e.id === r.empId); if(!emp) return [];
+      const out = [{ t:r.inAt, name:emp.name, kind:"Masuk", late:r.lateMin, flag:r.inFlag }];
+      if(r.outAt) out.push({ t:r.outAt, name:emp.name, kind:"Pulang", ot:r.otMin, flag:r.outFlag });
+      return out;
+    }).sort((a,b) => b.t - a.t);
+
+  return `
+  <div class="strip">
+    <div class="v-ok"><b>${hadir}</b><span>Hadir</span></div>
+    <div><b>${kerja}</b><span>Kerja</span></div>
+    <div class="v-late"><b>${telat}</b><span>Telat</span></div>
+    <div class="v-off"><b>${belum}</b><span>Belum</span></div>
+  </div>
+  ${emps.length > 8 ? `<div class="field"><input type="text" id="q" placeholder="Cari nama karyawan…" value="${esc(filterQ)}"></div>` : ""}
+  <div class="grid">
+    ${shown.map(({e,st}) => empCard(e,st)).join("")}
+  </div>
+  ${!shown.length ? `<div class="empty">Tidak ada karyawan yang cocok dengan "${esc(filterQ)}".</div>` : ""}
+  <div class="sect"><h2>Aktivitas hari ini</h2><span class="lbl">${feed.length} catatan</span></div>
+  ${feed.length ? `<div class="list">${feed.map(f => `
+    <div class="item" style="cursor:default">
+      <div class="grow">
+        <div class="t1">${esc(f.name)}</div>
+        <div class="t2">${f.kind}${f.late > 0 ? ` · telat ${fmtDur(f.late)}` : ""}${f.ot > 0 ? ` · lembur ${fmtDur(f.ot)}` : ""}${f.flag ? " · wajah perlu dicek" : ""}</div>
+      </div>
+      <div class="tm">${hm(f.t)}</div>
+    </div>`).join("")}</div>`
+    : `<div class="card"><div class="empty">Belum ada absen hari ini.</div></div>`}
+  ${!storageOK ? `<div class="note warn" style="margin-top:14px">Penyimpanan HP tidak bisa diakses.
+    Data hanya bertahan selama halaman ini terbuka.</div>` : ""}`;
+}
+
+function empCard(e, st){
+  const chip = { belum:["c-belum","Belum absen"], kerja:["c-kerja","Sedang kerja"],
+                 alert:["c-telat","Lupa absen pulang"], selesai:["c-selesai","Selesai"] }[st.key];
+  let sub = `${e.jamMasuk}–${e.jamPulang}`;
+  if(st.rec){
+    sub = `Masuk ${hm(st.rec.inAt)}`;
+    if(st.rec.outAt) sub += ` · Pulang ${hm(st.rec.outAt)}`;
+  }
+  const late = st.rec && st.rec.lateMin > 0;
+  return `<button class="emp" data-state="${st.key}" data-act="emp" data-id="${e.id}">
+    <div class="row" style="gap:9px">
+      ${e.avatar ? `<img class="ava" src="${e.avatar}" alt="" style="transform:scaleX(-1)">`
+                 : `<div class="ava">${esc(initials(e.name))}</div>`}
+      <div class="grow">
+        <div class="nm">${esc(e.name)}</div>
+        <div class="ro">${esc(e.role || "Karyawan")}</div>
+      </div>
+    </div>
+    <div class="sch">${esc(sub)}</div>
+    <div class="row" style="gap:5px;flex-wrap:wrap">
+      <span class="chip ${chip[0]}">${chip[1]}</span>
+      ${late ? `<span class="chip c-telat">+${st.rec.lateMin}m</span>` : ""}
+      ${st.rec && st.rec.otMin > 0 ? `<span class="chip c-ot">L ${fmtJam(st.rec.otMin)}j</span>` : ""}
+    </div>
+  </button>`;
+}
+
+function openEmpSheet(id){
+  const e = db.employees.find(x => x.id === id); if(!e) return;
+  const st = empState(e);
+  const recs = todayRecords(e.id).sort((a,b) => a.inAt - b.inAt);
+  const hasTpl = e.templates && e.templates.length;
+  let action = "";
+  if(st.key === "belum"){
+    action = `<button class="btn pri blk" data-act="go" data-id="${e.id}" data-mode="masuk">Absen Masuk</button>`;
+  }else if(st.key === "kerja" || st.key === "alert"){
+    action = `<button class="btn ok blk" data-act="go" data-id="${e.id}" data-mode="pulang">Absen Pulang</button>`;
+  }else{
+    action = `<div class="note">Sudah absen masuk dan pulang hari ini. Untuk absen tambahan atau koreksi,
+      gunakan Admin → Rekap.</div>`;
+  }
+  const s = schedule(e, dkey());
+  sheet(`
+    <h3>${esc(e.name)}</h3>
+    <div class="sub">${esc(e.role || "Karyawan")} · Jadwal ${e.jamMasuk}–${e.jamPulang}
+      · toleransi ${tolOf(e)} menit${worksOn(e, dkey()) ? "" : " · <b>libur hari ini</b>"}</div>
+    ${st.stale ? `<div class="note warn" style="margin-bottom:14px">Absen masuk ${shortDate(st.rec.date)}
+      pukul ${hm(st.rec.inAt)} belum ditutup. Absen pulang sekarang akan menutup catatan tersebut,
+      atau perbaiki lewat Admin → Rekap.</div>` : ""}
+    ${!hasTpl && db.settings.faceMode !== "off" ? `<div class="note" style="margin-bottom:14px">Wajah belum
+      didaftarkan. Absen tetap bisa dilakukan dengan foto selfie sebagai bukti, tanpa pencocokan.</div>` : ""}
+    ${recs.length ? `<div class="list" style="margin-bottom:14px">${recs.map(r => `
+      <div class="item" style="cursor:default">
+        <div class="grow"><div class="t1">${r.outAt ? "Masuk & pulang" : "Masuk"}</div>
+          <div class="t2">${r.lateMin > 0 ? `Terlambat ${fmtDur(r.lateMin)}` : "Tepat waktu"}${
+            r.outAt ? ` · Kerja ${fmtDur(r.workMin)}` : ""}${r.otMin > 0 ? ` · Lembur ${fmtDur(r.otMin)}` : ""}</div></div>
+        <div class="tm">${hm(r.inAt)}${r.outAt ? " → " + hm(r.outAt) : " → —"}</div>
+      </div>`).join("")}</div>` : ""}
+    ${action}
+    <div style="height:8px"></div>
+    <button class="btn ghost blk" data-act="scrim">Tutup</button>`);
+}
+
+/* ---------- tab admin ---------- */
+function viewAdmin(){
+  if(!adminUnlocked){
+    return `<div class="card"><div class="empty">
+      <div class="big">Area terkunci</div>
+      Rekap, data karyawan, dan pengaturan hanya bisa diakses admin.
+      <div style="height:16px"></div>
+      <button class="btn pri" data-act="unlock">Buka dengan PIN</button>
+    </div></div>`;
+  }
+  return `
+  <div class="seg">
+    ${[["rekap","Rekap"],["karyawan","Karyawan"],["setelan","Pengaturan"]].map(([k,l]) =>
+      `<button data-act="sec" data-sec="${k}" aria-current="${adminSec===k}">${l}</button>`).join("")}
+  </div>
+  ${adminSec === "rekap" ? secRekap() : adminSec === "karyawan" ? secKaryawan() : secSetelan()}
+  <div style="height:16px"></div>
+  <button class="btn ghost blk" data-act="lock">Kunci Area Admin</button>`;
+}
+
+/* ---- rekap ---- */
+function periodRange(){
+  if(period === "today"){ const k = dkey(); return { from:k, to:k, label:longDate(k) }; }
+  const [y,m] = period.split("-").map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return { from:`${y}-${pad(m)}-01`, to:`${y}-${pad(m)}-${pad(last)}`, label:`${MONTHS[m-1]} ${y}` };
+}
+function summarize(){
+  const { from, to } = periodRange();
+  const today = dkey();
+  return db.employees.map(e => {
+    const rs = db.records.filter(r => r.empId === e.id && r.date >= from && r.date <= to);
+    const hadirDays = new Set(rs.map(r => r.date));
+    let sched = 0;
+    const [fy,fm,fd] = from.split("-").map(Number);
+    const [ty,tm,td] = to.split("-").map(Number);
+    for(let d = new Date(fy,fm-1,fd); d <= new Date(ty,tm-1,td); d.setDate(d.getDate()+1)){
+      const k = dkey(d);
+      if(k > today) break;
+      if(worksOn(e,k)) sched++;
+    }
+    const lateCnt = rs.filter(r => r.lateMin > 0).length;
+    const sum = (f) => rs.reduce((a,r) => a + (r[f]||0), 0);
+    const alpa = Math.max(0, sched - [...hadirDays].filter(k => k <= today && worksOn(e,k)).length);
+    return { e, recs:rs, hadir:hadirDays.size, sched, alpa, lateCnt,
+             lateMin:sum("lateMin"), workMin:sum("workMin"), otMin:sum("otMin"), earlyMin:sum("earlyMin") };
+  });
+}
+function secRekap(){
+  const rows = summarize();
+  const { label } = periodRange();
+  const flagged = db.records.filter(r => (r.inFlag || r.outFlag)).length;
+  const anyData = rows.some(r => r.recs.length);
+  return `
+  <div class="field">
+    <label for="per">Periode</label>
+    <div class="row" style="gap:8px">
+      <input type="month" id="per" value="${period === "today" ? new Date().toISOString().slice(0,7) : period}"
+        data-act="period" class="grow">
+      <button class="btn sm ${period === "today" ? "pri" : ""}" data-act="today">Hari ini</button>
+    </div>
+  </div>
+  ${flagged ? `<div class="note warn" style="margin-bottom:12px">${flagged} absen dengan kecocokan wajah
+    di bawah ambang. Buka rincian karyawan untuk memeriksa fotonya.</div>` : ""}
+  <div class="sect"><h2>${esc(label)}</h2><span class="lbl">Ketuk baris untuk rincian</span></div>
+  ${db.employees.length ? `
+  <div class="twrap"><table>
+    <thead><tr><th>Karyawan</th><th>Hadir</th><th>Alpa</th><th>Telat</th><th>Telat&nbsp;(m)</th><th>Kerja&nbsp;(j)</th><th>Lembur&nbsp;(j)</th></tr></thead>
+    <tbody>${rows.map(r => `
+      <tr data-act="empdetail" data-id="${r.e.id}">
+        <td>${esc(r.e.name)}</td>
+        <td class="num">${r.hadir}<span class="muted">/${r.sched}</span></td>
+        <td class="num" ${r.alpa ? `style="color:var(--late)"` : ""}>${r.alpa}</td>
+        <td class="num" ${r.lateCnt ? `style="color:var(--late)"` : ""}>${r.lateCnt}</td>
+        <td class="num">${r.lateMin}</td>
+        <td class="num">${fmtJam(r.workMin)}</td>
+        <td class="num" ${r.otMin ? `style="color:var(--ot)"` : ""}>${fmtJam(r.otMin)}</td>
+      </tr>`).join("")}</tbody>
+  </table></div>` : `<div class="card"><div class="empty">Belum ada karyawan.</div></div>`}
+  <div class="sect"><h2>Ekspor & koreksi</h2></div>
+  <div class="stack" style="gap:8px">
+    <div class="btnrow">
+      <button class="btn" data-act="csv" data-kind="detail" ${anyData ? "" : "disabled"}>CSV Detail</button>
+      <button class="btn" data-act="csv" data-kind="rekap" ${db.employees.length ? "" : "disabled"}>CSV Rekap</button>
+    </div>
+    <button class="btn ghost blk" data-act="manual" ${db.employees.length ? "" : "disabled"}>Tambah Absen Manual</button>
+    <div class="hint">Unduhan diblokir browser? Salin sebagai teks:
+      <b data-act="csvt" data-kind="detail" style="color:var(--accent);cursor:pointer">Detail</b> ·
+      <b data-act="csvt" data-kind="rekap" style="color:var(--accent);cursor:pointer">Rekap</b></div>
+  </div>`;
+}
+function openEmpDetail(id){
+  const e = db.employees.find(x => x.id === id); if(!e) return;
+  const { from, to, label } = periodRange();
+  const rs = db.records.filter(r => r.empId === id && r.date >= from && r.date <= to)
+                       .sort((a,b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.inAt - b.inAt));
+  sheet(`
+    <h3>${esc(e.name)}</h3>
+    <div class="sub">${esc(label)} · ${rs.length} catatan</div>
+    ${rs.length ? `<div class="list">${rs.map(r => {
+      const bits = [];
+      if(r.lateMin > 0) bits.push(`<span style="color:var(--late)">telat ${fmtDur(r.lateMin)}</span>`);
+      if(r.otMin > 0) bits.push(`<span style="color:var(--ot)">lembur ${fmtDur(r.otMin)}</span>`);
+      if(r.earlyMin > 0) bits.push(`pulang cepat ${fmtDur(r.earlyMin)}`);
+      if(!r.outAt) bits.push(`<b>belum absen pulang</b>`);
+      if(r.inFlag || r.outFlag) bits.push(`<span style="color:var(--late)">wajah perlu dicek</span>`);
+      if(r.edited) bits.push(`diedit admin`);
+      return `<button class="item" data-act="editrec" data-id="${r.id}">
+        <div class="grow"><div class="t1">${shortDate(r.date)}</div>
+          <div class="t2">${bits.join(" · ") || (r.workMin ? `kerja ${fmtDur(r.workMin)}` : "tepat waktu")}</div></div>
+        <div class="tm">${hm(r.inAt)} → ${r.outAt ? hm(r.outAt) : "—"}</div>
+      </button>`;
+    }).join("")}</div>` : `<div class="empty">Tidak ada catatan pada periode ini.</div>`}
+    <div style="height:12px"></div>
+    <button class="btn ghost blk" data-act="scrim">Tutup</button>`);
+}
+
+function openRecEdit(rid){
+  const r = db.records.find(x => x.id === rid); if(!r) return;
+  const e = db.employees.find(x => x.id === r.empId);
+  sheet(`
+    <h3>Koreksi Absen</h3>
+    <div class="sub">${esc(e ? e.name : "?")} · ${longDate(r.date)}</div>
+    <div class="field"><label for="ed">Tanggal</label><input type="date" id="ed" value="${r.date}"></div>
+    <div class="row" style="gap:10px">
+      <div class="field grow"><label for="ei">Jam masuk</label><input type="time" id="ei" value="${hm(r.inAt)}"></div>
+      <div class="field grow"><label for="eo">Jam pulang</label><input type="time" id="eo" value="${r.outAt ? hm(r.outAt) : ""}"></div>
+    </div>
+    <div class="field"><label for="en">Catatan</label>
+      <textarea id="en" placeholder="Alasan koreksi, mis. lupa absen pulang">${esc(r.note||"")}</textarea></div>
+    <div class="field"><span class="hint">Kosongkan jam pulang bila karyawan masih bekerja.
+      Jam pulang lebih awal dari jam masuk dianggap lewat tengah malam.</span></div>
+    <div id="recphotos" class="pgrid"></div>
+    <div class="btnrow"><button class="btn dgr" data-act="delrec" data-id="${r.id}">Hapus</button>
+      <button class="btn pri" data-act="saverec" data-id="${r.id}">Simpan</button></div>
+    <div style="height:8px"></div>
+    <button class="btn ghost blk" data-act="scrim">Batal</button>`);
+  loadRecPhotos(r);
+}
+async function loadRecPhotos(r){
+  const box = el("recphotos"); if(!box) return;
+  const [pi, po] = await Promise.all([photoGet(r.id + ":in"), photoGet(r.id + ":out")]);
+  const cell = (p, cap, score) => p
+    ? `<figure><figcaption>${cap}${score !== null && score !== undefined ? ` · ${score}%` : ""}</figcaption>
+       <img class="photo" src="${p}" alt="${cap}"></figure>` : "";
+  const html = cell(pi, "Foto masuk", r.inScore) + cell(po, "Foto pulang", r.outScore);
+  box.innerHTML = html;
+  if(!html) box.style.display = "none";
+}
+function saveRecEdit(rid){
+  const r = db.records.find(x => x.id === rid); if(!r) return;
+  const date = el("ed").value, ti = el("ei").value, to = el("eo").value;
+  if(!date || !ti){ toast("Tanggal dan jam masuk wajib diisi"); return; }
+  const [y,m,d] = date.split("-").map(Number);
+  const inAt = new Date(y, m-1, d, 0, 0, 0, 0); inAt.setMinutes(parseHM(ti));
+  r.date = date; r.inAt = inAt.getTime();
+  if(to){
+    const outAt = new Date(y, m-1, d, 0, 0, 0, 0); outAt.setMinutes(parseHM(to));
+    if(outAt.getTime() <= r.inAt) outAt.setDate(outAt.getDate()+1);
+    r.outAt = outAt.getTime();
+  } else r.outAt = null;
+  r.note = el("en").value.trim();
+  r.edited = true; r.inFlag = false; r.outFlag = false;
+  recalc(r); save(); closeSheet(); render(); toast("Catatan absen diperbarui");
+}
+async function delRec(rid){
+  const r = db.records.find(x => x.id === rid); if(!r) return;
+  if(!confirm("Hapus catatan absen ini? Tindakan ini tidak bisa dibatalkan.")) return;
+  await photoDel(r.id + ":in"); await photoDel(r.id + ":out");
+  db.records = db.records.filter(x => x.id !== rid);
+  save(); closeSheet(); render(); toast("Catatan absen dihapus");
+}
+function openManual(){
+  sheet(`
+    <h3>Tambah Absen Manual</h3>
+    <div class="sub">Untuk karyawan yang lupa absen di HP</div>
+    <div class="field"><label for="mk">Karyawan</label>
+      <select id="mk">${db.employees.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></div>
+    <div class="field"><label for="md">Tanggal</label><input type="date" id="md" value="${dkey()}"></div>
+    <div class="row" style="gap:10px">
+      <div class="field grow"><label for="mi">Jam masuk</label><input type="time" id="mi" value="08:00"></div>
+      <div class="field grow"><label for="mo">Jam pulang</label><input type="time" id="mo" value=""></div>
+    </div>
+    <div class="field"><label for="mn">Catatan</label>
+      <textarea id="mn" placeholder="mis. absen manual, HP mati"></textarea></div>
+    <div class="btnrow"><button class="btn ghost" data-act="scrim">Batal</button>
+      <button class="btn pri" data-act="savemanual">Simpan</button></div>`);
+}
+function saveManual(){
+  const empId = el("mk").value, date = el("md").value, ti = el("mi").value, to = el("mo").value;
+  if(!empId || !date || !ti){ toast("Karyawan, tanggal, dan jam masuk wajib diisi"); return; }
+  const [y,m,d] = date.split("-").map(Number);
+  const inAt = new Date(y, m-1, d, 0, 0, 0, 0); inAt.setMinutes(parseHM(ti));
+  const rec = { id:uid(), empId, date, inAt:inAt.getTime(), outAt:null, inScore:null, outScore:null,
+    inFlag:false, outFlag:false, inAdmin:true, outAdmin:true, note:el("mn").value.trim(),
+    edited:true, hasIn:false, hasOut:false };
+  if(to){
+    const outAt = new Date(y, m-1, d, 0, 0, 0, 0); outAt.setMinutes(parseHM(to));
+    if(outAt.getTime() <= rec.inAt) outAt.setDate(outAt.getDate()+1);
+    rec.outAt = outAt.getTime();
+  }
+  recalc(rec); db.records.push(rec); save(); closeSheet(); render(); toast("Absen manual ditambahkan");
+}
+
+/* ---- karyawan ---- */
+function secKaryawan(){
+  return `
+  <button class="btn pri blk" data-act="newemp">+ Tambah Karyawan</button>
+  <div class="sect"><h2>Daftar karyawan</h2><span class="lbl">${db.employees.length} orang</span></div>
+  ${db.employees.length ? `<div class="list">${db.employees.map(e => {
+    const n = e.templates ? e.templates.length : 0;
+    return `<button class="item" data-act="editemp" data-id="${e.id}">
+      ${e.avatar ? `<img class="ava" src="${e.avatar}" alt="" style="transform:scaleX(-1)">`
+                 : `<div class="ava">${esc(initials(e.name))}</div>`}
+      <div class="grow">
+        <div class="t1">${esc(e.name)}${e.active === false ? ' <span class="chip c-belum">Nonaktif</span>' : ""}</div>
+        <div class="t2">${esc(e.role || "Karyawan")} · ${e.jamMasuk}–${e.jamPulang} ·
+          ${e.days.map((v,i) => v ? DAYS[i] : null).filter(Boolean).join(" ") || "tanpa hari kerja"}</div>
+      </div>
+      <span class="chip ${n ? "c-kerja" : "c-belum"}">${n ? n + " foto" : "belum"}</span>
+    </button>`;
+  }).join("")}</div>` : `<div class="card"><div class="empty">Belum ada karyawan.</div></div>`}`;
+}
+function openEmpForm(id){
+  const e = id ? db.employees.find(x => x.id === id) : null;
+  const days = e ? e.days.slice() : [false,true,true,true,true,true,true];
+  const n = e && e.templates ? e.templates.length : 0;
+  sheet(`
+    <h3>${e ? "Ubah Karyawan" : "Karyawan Baru"}</h3>
+    <div class="sub">${e ? esc(e.name) : "Isi data dan jadwal kerja"}</div>
+    <div class="field"><label for="fn">Nama</label>
+      <input type="text" id="fn" value="${esc(e ? e.name : "")}" placeholder="mis. Rani Puspita" autocomplete="off"></div>
+    <div class="field"><label for="fr">Posisi</label>
+      <input type="text" id="fr" value="${esc(e ? e.role || "" : "")}" placeholder="mis. Barista" autocomplete="off"></div>
+    <div class="row" style="gap:10px">
+      <div class="field grow"><label for="fi">Jam masuk</label><input type="time" id="fi" value="${e ? e.jamMasuk : "08:00"}"></div>
+      <div class="field grow"><label for="fo">Jam pulang</label><input type="time" id="fo" value="${e ? e.jamPulang : "17:00"}"></div>
+    </div>
+    <div class="field"><label>Hari kerja</label>
+      <div class="days" id="fd">${DAYS.map((d,i) =>
+        `<button type="button" class="day" data-act="day" data-i="${i}" aria-pressed="${!!days[i]}">${d}</button>`).join("")}</div>
+    </div>
+    <div class="field"><label for="ft">Toleransi telat (menit)</label>
+      <input type="number" id="ft" min="0" max="120" value="${e && e.tolerance !== null && e.tolerance !== undefined ? e.tolerance : ""}"
+        placeholder="ikut pengaturan umum (${db.settings.tolerance})">
+      <span class="hint">Kosongkan untuk mengikuti pengaturan umum.</span></div>
+    <div class="toggle"><div><div style="font-weight:600">Karyawan aktif</div>
+      <div class="hint">Karyawan nonaktif tidak muncul di layar absen.</div></div>
+      <button class="sw" id="fa" data-act="togactive" aria-pressed="${e ? e.active !== false : true}" aria-label="Karyawan aktif"></button></div>
+    <hr class="dash" style="margin:12px 0 14px">
+    <div class="field"><label>Pendaftaran wajah</label>
+      <span class="hint">${n ? `${n} foto terdaftar. Daftar ulang bila penampilan berubah (mis. potong rambut, pakai kacamata) atau posisi HP dipindah.`
+        : "Belum ada foto. Daftarkan 3 foto agar sistem bisa mencocokkan wajah saat absen."}</span></div>
+    <div class="btnrow" style="margin-bottom:12px">
+      <button class="btn" data-act="enroll" data-id="${e ? e.id : ""}" ${e ? "" : "disabled"}>${n ? "Daftar Ulang" : "Daftarkan Wajah"}</button>
+      <button class="btn" data-act="testface" ${db.employees.some(x => x.templates && x.templates.length) ? "" : "disabled"}>Uji Wajah</button>
+    </div>
+    ${e ? `<div class="btnrow" style="margin-bottom:12px"><button class="btn dgr blk" data-act="delemp" data-id="${e.id}">Hapus Karyawan</button></div>` : ""}
+    <div class="btnrow"><button class="btn ghost" data-act="scrim">Batal</button>
+      <button class="btn pri" data-act="saveemp" data-id="${e ? e.id : ""}">Simpan</button></div>
+    ${e ? "" : `<div style="height:10px"></div><div class="hint">Simpan dulu, lalu buka kembali untuk mendaftarkan wajah.</div>`}`);
+  formDays = days;
+  formActive = e ? e.active !== false : true;
+}
+let formDays = [], formActive = true;
+function saveEmp(id){
+  const name = el("fn").value.trim();
+  if(!name){ toast("Nama karyawan wajib diisi"); return; }
+  const tolRaw = el("ft").value.trim();
+  const data = {
+    name, role: el("fr").value.trim(), jamMasuk: el("fi").value || "08:00",
+    jamPulang: el("fo").value || "17:00", days: formDays.slice(),
+    tolerance: tolRaw === "" ? null : Math.max(0, Number(tolRaw)), active: formActive
+  };
+  if(id){
+    const e = db.employees.find(x => x.id === id);
+    Object.assign(e, data);
+  }else{
+    db.employees.push(Object.assign({ id:uid(), templates:[], avatar:null }, data));
+  }
+  recalcAll(); save(); closeSheet(); render(); toast(id ? "Data karyawan diperbarui" : `${name} ditambahkan`);
+}
+async function delEmp(id){
+  const e = db.employees.find(x => x.id === id); if(!e) return;
+  const cnt = db.records.filter(r => r.empId === id).length;
+  if(!confirm(`Hapus ${e.name} beserta ${cnt} catatan absennya? Tindakan ini tidak bisa dibatalkan.`)) return;
+  for(const r of db.records.filter(r => r.empId === id)){
+    await photoDel(r.id + ":in"); await photoDel(r.id + ":out");
+  }
+  db.records = db.records.filter(r => r.empId !== id);
+  db.employees = db.employees.filter(x => x.id !== id);
+  save(); closeSheet(); render(); toast(`${e.name} dihapus`);
+}
+
+/* ---- pengaturan ---- */
+function secSetelan(){
+  const s = db.settings;
+  const modes = [["strict","Wajib cocok"],["warn","Peringatan saja"],["off","Nonaktif"]];
+  return `
+  <div class="field"><label for="sn">Nama cafe</label>
+    <input type="text" id="sn" value="${esc(s.cafeName)}" data-act="setting" data-k="cafeName"></div>
+  <div class="row" style="gap:10px">
+    <div class="field grow"><label for="st">Toleransi telat (menit)</label>
+      <input type="number" id="st" min="0" max="120" value="${s.tolerance}" data-act="setting" data-k="tolerance"></div>
+    <div class="field grow"><label for="sm">Lembur dihitung dari (menit)</label>
+      <input type="number" id="sm" min="0" max="240" value="${s.minOvertime}" data-act="setting" data-k="minOvertime"></div>
+  </div>
+  <div class="field"><span class="hint">Lembur baru dihitung bila karyawan pulang lebih dari
+    ${s.minOvertime} menit setelah jam pulang jadwalnya.</span></div>
+
+  <div class="sect"><h2>Verifikasi wajah</h2></div>
+  <div class="field"><label for="sf">Mode</label>
+    <select id="sf" data-act="setting" data-k="faceMode">
+      ${modes.map(([k,l]) => `<option value="${k}" ${s.faceMode===k?"selected":""}>${l}</option>`).join("")}</select>
+    <span class="hint">${
+      s.faceMode === "strict" ? "Absen ditolak bila wajah tidak cocok, kecuali disetujui admin."
+      : s.faceMode === "warn" ? "Absen tetap tercatat, tapi ditandai bila wajah tidak cocok."
+      : "Tidak ada pencocokan. Foto selfie tetap diambil sebagai bukti."}</span></div>
+  <div class="field"><label for="sth">Ambang kecocokan — ${s.faceThreshold}%</label>
+    <input type="range" id="sth" min="30" max="90" step="5" value="${s.faceThreshold}" data-act="setting" data-k="faceThreshold">
+    <span class="hint">Naikkan bila orang lain lolos, turunkan bila karyawan asli sering ditolak.
+      Pakai <b>Uji Wajah</b> di menu Karyawan untuk mencari angka yang pas di cafe Anda.</span></div>
+  <div class="note">Pencocokan wajah di sini berjalan penuh di HP ini dan cocok untuk memverifikasi
+    identitas dengan posisi HP dan pencahayaan yang konsisten. Ini bukan pengenalan wajah tingkat keamanan tinggi
+    — foto selfie tiap absen tetap disimpan sebagai bukti utama.</div>
+
+  <div class="sect"><h2>Keamanan</h2></div>
+  <button class="btn blk" data-act="changepin">Ubah PIN Admin</button>
+
+  <div class="sect"><h2>Data & penyimpanan</h2></div>
+  <div class="field"><label for="sr">Simpan foto selama (hari)</label>
+    <input type="number" id="sr" min="0" max="365" value="${s.retention}" data-act="setting" data-k="retention">
+    <span class="hint">Foto lebih lama dari ini dihapus otomatis; catatan absennya tetap tersimpan.
+      Isi 0 untuk menyimpan selamanya.</span></div>
+  <div class="field"><span class="hint" id="usage">Menghitung pemakaian penyimpanan…</span></div>
+  <div class="stack" style="gap:8px">
+    <div class="btnrow">
+      <button class="btn" data-act="backup">Cadangkan (JSON)</button>
+      <label class="btn" style="cursor:pointer">Pulihkan<input type="file" accept="application/json,.json" id="restore" hidden></label>
+    </div>
+    <button class="btn ghost blk" data-act="prune">Hapus Foto Lama Sekarang</button>
+    <button class="btn dgr blk" data-act="reset">Hapus Semua Data</button>
+  </div>
+
+  <div class="sect"><h2>Tips pemakaian</h2></div>
+  <div class="card" style="padding:13px 14px;font-size:13px;line-height:1.6;color:var(--muted)">
+    <b style="color:var(--text)">Pasang di layar utama.</b> Buka menu Chrome → “Tambahkan ke layar Utama”
+    supaya terbuka layar penuh seperti aplikasi.<br><br>
+    <b style="color:var(--text)">Taruh HP di posisi tetap.</b> Dudukan permanen di dekat kasir dengan
+    pencahayaan stabil membuat pencocokan wajah jauh lebih akurat.<br><br>
+    <b style="color:var(--text)">Daftar ulang wajah</b> bila HP dipindah atau lampu cafe diganti.<br><br>
+    <b style="color:var(--text)">Cadangkan tiap bulan</b> setelah ekspor CSV — data tersimpan hanya di HP ini.
+  </div>`;
+}
+async function showUsage(){
+  const u = el("usage"); if(!u) return;
+  const recs = db.records.length, emps = db.employees.length;
+  let extra = "";
+  try{
+    if(navigator.storage && navigator.storage.estimate){
+      const est = await navigator.storage.estimate();
+      if(est && est.usage) extra = ` · terpakai ${(est.usage/1048576).toFixed(1)} MB`;
+    }
+  }catch(e){}
+  u.textContent = `${emps} karyawan · ${recs} catatan absen${extra}`;
+}
+async function pruneOld(silent){
+  const days = Number(db.settings.retention || 0);
+  if(!days) { if(!silent) toast("Retensi diatur selamanya — tidak ada yang dihapus"); return; }
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+  const ck = dkey(cutoff);
+  let n = 0;
+  for(const r of db.records){
+    if(r.date < ck && (r.hasIn || r.hasOut)){
+      if(r.hasIn){ await photoDel(r.id + ":in"); r.hasIn = false; n++; }
+      if(r.hasOut){ await photoDel(r.id + ":out"); r.hasOut = false; n++; }
+    }
+  }
+  if(n) save();
+  if(!silent) toast(n ? `${n} foto lama dihapus` : "Tidak ada foto lama untuk dihapus");
+  if(!silent) showUsage();
+}
+async function changePin(){
+  const cur = await askPin("PIN Saat Ini", "Masukkan PIN admin yang berlaku");
+  if(cur === null) return;
+  if(cur !== String(db.settings.pin)){ toast("PIN salah"); return; }
+  const a = await askPin("PIN Baru", "Masukkan 4 angka PIN baru");
+  if(a === null) return;
+  const b = await askPin("Ulangi PIN Baru", "Ketik sekali lagi untuk memastikan");
+  if(b === null) return;
+  if(a !== b){ toast("PIN tidak sama — coba lagi"); return; }
+  db.settings.pin = a; save(); toast("PIN admin diperbarui");
+}
+function backup(){
+  const payload = JSON.stringify({ app:"absensi-cafe", version:1, exportedAt:new Date().toISOString(), data:db }, null, 1);
+  download(`cadangan-absensi-${dkey()}.json`, payload, "application/json");
+}
+function restoreFile(file){
+  const fr = new FileReader();
+  fr.onload = () => {
+    try{
+      const p = JSON.parse(fr.result);
+      const d = p && p.data ? p.data : p;
+      if(!d || !Array.isArray(d.employees) || !Array.isArray(d.records)) throw 0;
+      if(!confirm(`Ganti semua data saat ini dengan cadangan ini (${d.employees.length} karyawan, ${d.records.length} catatan)?`)) return;
+      db.settings  = Object.assign({}, DEFAULTS.settings, d.settings || {});
+      db.employees = d.employees;
+      db.records   = d.records;
+      recalcAll(); save(); render(); toast("Cadangan berhasil dipulihkan");
+    }catch(e){ toast("File cadangan tidak dikenali"); }
+  };
+  fr.onerror = () => toast("File tidak bisa dibaca");
+  fr.readAsText(file);
+}
+function resetAll(){
+  if(!confirm("Hapus SEMUA karyawan, catatan absen, dan foto dari HP ini? Tindakan ini tidak bisa dibatalkan.")) return;
+  if(!confirm("Yakin? Cadangkan dulu bila datanya masih dibutuhkan.")) return;
+  const pinKeep = db.settings.pin, nameKeep = db.settings.cafeName;
+  db = JSON.parse(JSON.stringify(DEFAULTS));
+  db.settings.pin = pinKeep; db.settings.cafeName = nameKeep;
+  try{ indexedDB.deleteDatabase("absensi_cafe"); }catch(e){}
+  idbP = null; memPhotos.clear();
+  save(); render(); toast("Semua data dihapus");
+}
+
+/* ---- CSV ---- */
+function csvCell(v){
+  const s = String(v == null ? "" : v);
+  return /[";\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+function buildCSV(kind){
+  const { from, to, label } = periodRange();
+  const rows = [];
+  if(kind === "detail"){
+    rows.push(["Tanggal","Hari","Nama","Posisi","Jadwal Masuk","Jadwal Pulang","Jam Masuk","Jam Pulang",
+      "Terlambat (menit)","Pulang Cepat (menit)","Lembur (menit)","Durasi Kerja (menit)","Durasi Kerja (jam)",
+      "Cocok Wajah Masuk (%)","Cocok Wajah Pulang (%)","Status","Catatan"]);
+    const recs = db.records.filter(r => r.date >= from && r.date <= to)
+      .sort((a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.inAt - b.inAt));
+    for(const r of recs){
+      const e = db.employees.find(x => x.id === r.empId); if(!e) continue;
+      const [y,m,d] = r.date.split("-").map(Number);
+      const flags = [];
+      if(r.lateMin > 0) flags.push("Terlambat");
+      if(!r.outAt) flags.push("Belum absen pulang");
+      if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
+      if(r.edited) flags.push("Diedit admin");
+      rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "", e.jamMasuk, e.jamPulang,
+        hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0, r.earlyMin || 0, r.otMin || 0,
+        r.workMin || 0, fmtJam(r.workMin), r.inScore == null ? "" : r.inScore,
+        r.outScore == null ? "" : r.outScore, flags.join(", ") || "Normal", r.note || ""]);
+    }
+  }else{
+    rows.push(["Nama","Posisi","Jadwal","Hari Kerja Terjadwal","Hadir","Alpa","Jumlah Telat",
+      "Total Telat (menit)","Total Kerja (menit)","Total Kerja (jam)","Total Lembur (menit)","Total Lembur (jam)"]);
+    for(const r of summarize()){
+      rows.push([r.e.name, r.e.role || "", `${r.e.jamMasuk}-${r.e.jamPulang}`, r.sched, r.hadir, r.alpa,
+        r.lateCnt, r.lateMin, r.workMin, fmtJam(r.workMin), r.otMin, fmtJam(r.otMin)]);
+    }
+  }
+  const head = `Rekap Absensi;${db.settings.cafeName}\nPeriode;${label}\nDiekspor;${new Date().toLocaleString("id-ID")}\n\n`;
+  return { text: head + rows.map(r => r.map(csvCell).join(";")).join("\n"),
+           name: `absensi-${kind}-${label.toLowerCase().replace(/\s+/g,"-")}.csv` };
+}
+function download(name, text, mime){
+  try{
+    const blob = new Blob(["﻿" + text], { type:(mime||"text/csv") + ";charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast("File diunduh: " + name);
+    return true;
+  }catch(e){ return false; }
+}
+function exportCSV(kind){
+  const { text, name } = buildCSV(kind);
+  if(!download(name, text)) showText(name, text);
+}
+function showText(kindOrName, maybeText){
+  // dipakai bila unduhan diblokir, atau bila admin sengaja memilih "salin teks"
+  const { text, name } = maybeText !== undefined
+    ? { text:maybeText, name:kindOrName }
+    : buildCSV(kindOrName);
+  sheet(`<h3>Salin CSV</h3>
+    <div class="sub">${esc(name)}</div>
+    <div class="hint" style="margin-bottom:14px">Salin teks di bawah, lalu tempel ke Excel atau
+      Google Sheets. Kolom dipisahkan tanda titik koma.</div>
+    <textarea readonly id="csvtext" style="min-height:160px;font-family:var(--f-mono);font-size:11px">${esc(text)}</textarea>
+    <div style="height:10px"></div>
+    <div class="btnrow"><button class="btn" data-act="copycsv">Salin Teks</button>
+      <button class="btn pri" data-act="scrim">Tutup</button></div>`);
+}
+function copyCSV(){
+  const t = el("csvtext"); if(!t) return;
+  t.select(); t.setSelectionRange(0, t.value.length);
+  const done = () => toast("Teks CSV disalin");
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t.value).then(done, () => { document.execCommand("copy"); done(); });
+  }else{ try{ document.execCommand("copy"); done(); }catch(e){ toast("Salin manual dengan tekan lama"); } }
+}
+
+/* ============================================================
+   INTERAKSI
+   ============================================================ */
+document.addEventListener("click", async (ev) => {
+  const t = ev.target.closest("[data-act]");
+  if(!t) return;
+  const a = t.dataset.act, id = t.dataset.id;
+
+  if(a === "scrim"){
+    if(t !== ev.target && !t.classList.contains("btn")) return;
+    closeSheet(); return;
+  }
+  if(a === "pinscrim"){
+    if(t !== ev.target) return;
+    closePin();
+    const r = pinResolve; pinResolve = null; if(r) r(null);
+    return;
+  }
+  switch(a){
+    case "tab":
+      activeTab = t.dataset.tab; filterQ = ""; render();
+      if(activeTab === "admin" && adminUnlocked && adminSec === "setelan") showUsage();
+      break;
+    case "emp": openEmpSheet(id); break;
+    case "go": {
+      closeSheet();
+      cam0EmpId = id;
+      openCam({ mode:"absen", empId:id, action:t.dataset.mode });
+      break;
+    }
+    case "pin": pinKey(t.dataset.k); break;
+    case "unlock": {
+      const p = await askPin("PIN Admin", "Buka rekap, data karyawan, dan pengaturan");
+      if(p === null) break;
+      if(p === String(db.settings.pin)){ adminUnlocked = true; render(); if(adminSec === "setelan") showUsage(); }
+      else toast("PIN salah");
+      break;
+    }
+    case "lock": adminUnlocked = false; render(); toast("Area admin dikunci"); break;
+    case "sec": adminSec = t.dataset.sec; render(); if(adminSec === "setelan") showUsage(); break;
+    case "today": period = "today"; render(); break;
+    case "empdetail": openEmpDetail(id); break;
+    case "editrec": openRecEdit(id); break;
+    case "saverec": saveRecEdit(id); break;
+    case "delrec": delRec(id); break;
+    case "manual": openManual(); break;
+    case "savemanual": saveManual(); break;
+    case "newemp": openEmpForm(null); break;
+    case "editemp": openEmpForm(id); break;
+    case "saveemp": saveEmp(id); break;
+    case "delemp": delEmp(id); break;
+    case "day": {
+      const i = Number(t.dataset.i);
+      formDays[i] = !formDays[i];
+      t.setAttribute("aria-pressed", String(!!formDays[i]));
+      break;
+    }
+    case "togactive":
+      formActive = !formActive;
+      t.setAttribute("aria-pressed", String(formActive));
+      break;
+    case "enroll": {
+      if(!id) break;
+      cam0EmpId = id;
+      closeSheet();
+      openCam({ mode:"enroll", empId:id });
+      break;
+    }
+    case "testface": closeSheet(); openCam({ mode:"test" }); break;
+    case "camclose": closeCam(); if(activeTab === "admin" && adminSec === "karyawan" && cam0EmpId) openEmpForm(cam0EmpId); break;
+    case "shoot": manualShoot(); break;
+    case "retake": retake(); break;
+    case "keepshot": keepShot(); break;
+    case "override": overrideAdmin(); break;
+    case "saveabsen": saveAbsen(); break;
+    case "csv": exportCSV(t.dataset.kind); break;
+    case "csvt": showText(t.dataset.kind); break;
+    case "changepin": changePin(); break;
+    case "backup": backup(); break;
+    case "prune": pruneOld(false); break;
+    case "reset": resetAll(); break;
+    case "copycsv": copyCSV(); break;
+  }
+});
+
+/* input & perubahan nilai */
+document.addEventListener("input", (ev) => {
+  const t = ev.target;
+  if(t.id === "q"){ filterQ = t.value; const g = $(".grid"); if(g) rerenderGrid(); return; }
+  if(t.dataset.act === "setting"){
+    const k = t.dataset.k;
+    let v = t.value;
+    if(["tolerance","minOvertime","faceThreshold","retention"].includes(k)) v = Math.max(0, Number(v) || 0);
+    db.settings[k] = v;
+    save();
+    if(k === "cafeName") el("cafeName").textContent = v || "Absensi Cafe";
+    if(k === "faceThreshold"){
+      const lab = t.previousElementSibling;
+      if(lab && lab.tagName === "LABEL") lab.textContent = `Ambang kecocokan — ${v}%`;
+    }
+    if(["tolerance","minOvertime"].includes(k)) recalcAll();
+  }
+});
+document.addEventListener("change", (ev) => {
+  const t = ev.target;
+  if(t.dataset.act === "period" && t.value){ period = t.value; render(); return; }
+  if(t.id === "restore" && t.files && t.files[0]){ restoreFile(t.files[0]); t.value = ""; return; }
+  if(t.dataset.act === "setting" && t.tagName === "SELECT") render();
+});
+function rerenderGrid(){
+  const view = el("view");
+  const q = el("q");
+  const pos = q ? q.selectionStart : null;
+  view.innerHTML = viewAbsen();
+  const q2 = el("q");
+  if(q2){ q2.focus(); if(pos !== null) q2.setSelectionRange(pos, pos); }
+}
+
+/* ---------- jam ---------- */
+let lastKey = dkey();
+function tickClock(){
+  const d = new Date();
+  el("clock").innerHTML = `${pad(d.getHours())}:${pad(d.getMinutes())}<span class="sec">${pad(d.getSeconds())}</span>`;
+  const k = dkey(d);
+  if(k !== lastKey){ lastKey = k; el("today").textContent = longDate(k); if(activeTab === "absen") render(); }
+}
+
+/* ---------- mulai ---------- */
+loadDB();
+recalcAll();
+render();
+tickClock();
+setInterval(tickClock, 1000);
+pruneOld(true);
+document.addEventListener("visibilitychange", () => {
+  if(!document.hidden && activeTab === "absen" && !cam && !el("layer").innerHTML) render();
+});
+</script>
