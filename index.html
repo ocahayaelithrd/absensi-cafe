@@ -1672,6 +1672,11 @@ function secRekap(){
   </table></div>` : `<div class="card"><div class="empty">Belum ada karyawan.</div></div>`}
   <div class="sect"><h2>Ekspor & koreksi</h2></div>
   <div class="stack" style="gap:8px">
+    <button class="btn pri blk" data-act="xlsx" ${db.employees.length ? "" : "disabled"}>
+      Unduh Excel (.xlsx)</button>
+    <div class="hint">Satu berkas berisi tiga lembar: <b>Rekap</b> ringkasan per karyawan,
+      <b>Detail</b> per hari, dan <b>Info</b> pengaturan yang dipakai saat ekspor. Angka sudah bertipe
+      angka, jadi bisa langsung dijumlahkan atau dibuat pivot.</div>
     <div class="btnrow">
       <button class="btn" data-act="csv" data-kind="detail" ${anyData ? "" : "disabled"}>CSV Detail</button>
       <button class="btn" data-act="csv" data-kind="rekap" ${db.employees.length ? "" : "disabled"}>CSV Rekap</button>
@@ -2095,61 +2100,334 @@ function csvCell(v){
   return /[";\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
 }
 function buildCSV(kind){
-  const { from, to, label } = periodRange();
-  const rows = [];
-  const withFine = !!db.settings.fineEnabled;
-  if(kind === "detail"){
-    rows.push(["Tanggal","Hari","Nama","Posisi","Shift","Jadwal Masuk","Jadwal Pulang","Jam Masuk","Jam Pulang",
-      "Terlambat (menit)", ...(withFine ? ["Denda (Rp)"] : []),
-      "Pulang Cepat (menit)","Lembur (menit)","Durasi Kerja (menit)","Durasi Kerja (jam)",
-      "Cocok Wajah Masuk (%)","Cocok Wajah Pulang (%)",
-      "Lat Masuk","Lon Masuk","Akurasi Masuk (m)","Jarak Masuk (m)",
-      "Lat Pulang","Lon Pulang","Akurasi Pulang (m)","Jarak Pulang (m)",
-      "Status","Catatan"]);
-    const recs = db.records.filter(r => r.date >= from && r.date <= to)
-      .sort((a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.inAt - b.inAt));
-    for(const r of recs){
-      const e = db.employees.find(x => x.id === r.empId); if(!e) continue;
-      const [y,m,d] = r.date.split("-").map(Number);
-      const sh = shiftOn(e, r.date);
-      const flags = [];
-      if(!sh) flags.push("Di luar jadwal");
-      if(r.lateMin > 0) flags.push("Terlambat");
-      if(!r.outAt) flags.push("Belum absen pulang");
-      if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
-      if(r.inGeoFlag || r.outGeoFlag) flags.push("Lokasi di luar area");
-      if(r.edited) flags.push("Diedit admin");
-      const n = v => (v === null || v === undefined) ? "" : v;
-      rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "",
-        sh ? sh.name : "", sh ? sh.start : "", sh ? sh.end : "",
-        hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0, ...(withFine ? [fineFor(r.lateMin)] : []),
-        r.earlyMin || 0, r.otMin || 0,
-        r.workMin || 0, fmtJam(r.workMin), r.inScore == null ? "" : r.inScore,
-        r.outScore == null ? "" : r.outScore,
-        n(r.inLat), n(r.inLon), n(r.inAcc), n(r.inDist),
-        n(r.outLat), n(r.outLon), n(r.outAcc), n(r.outDist),
-        flags.join(", ") || "Normal", r.note || ""]);
-    }
-  }else{
-    rows.push(["Nama","Posisi","Hari Kerja Terjadwal","Hadir","Alpa","Jumlah Telat",
-      "Total Telat (menit)", ...(withFine ? ["Total Denda (Rp)"] : []),
-      "Total Kerja (menit)","Total Kerja (jam)","Total Lembur (menit)","Total Lembur (jam)"]);
-    const all = summarize();
-    for(const r of all){
-      rows.push([r.e.name, r.e.role || "", r.sched, r.hadir, r.alpa,
-        r.lateCnt, r.lateMin, ...(withFine ? [r.fine] : []),
-        r.workMin, fmtJam(r.workMin), r.otMin, fmtJam(r.otMin)]);
-    }
-    if(all.length){
-      const tot = f => all.reduce((a,r) => a + r[f], 0);
-      rows.push([]);
-      rows.push(["TOTAL","","","","", tot("lateCnt"), tot("lateMin"), ...(withFine ? [tot("fine")] : []),
-        tot("workMin"), fmtJam(tot("workMin")), tot("otMin"), fmtJam(tot("otMin"))]);
-    }
-  }
-  const head = `Rekap Absensi;${db.settings.cafeName}\nPeriode;${label}\nDiekspor;${new Date().toLocaleString("id-ID")}\n\n`;
+  const { label } = periodRange();
+  const t = kind === "detail" ? tableDetail() : tableRekap();
+  const rows = [t.cols.map(c => c.h)];
+  for(const r of t.rows) rows.push(r.map((v,i) => csvVal(v, t.cols[i])));
+  if(t.total){ rows.push([]); rows.push(t.total.map((v,i) => csvVal(v, t.cols[i]))); }
+  const meta = [["Rekap Absensi", db.settings.cafeName], ["Periode", label],
+                ["Diekspor", new Date().toLocaleString("id-ID")]];
+  const head = meta.map(r => r.map(csvCell).join(";")).join("\n") + "\n\n";
   return { text: head + rows.map(r => r.map(csvCell).join(";")).join("\n"),
            name: `absensi-${kind}-${label.toLowerCase().replace(/\s+/g,"-")}.csv` };
+}
+/* Angka ditulis apa adanya di tabel bersama; CSV memakai koma desimal
+   ala Indonesia, sedangkan Excel menerima angka mentah plus format sel. */
+function csvVal(v, c){
+  if(v === null || v === undefined || v === "") return "";
+  if(c.t === "dec") return Number(v).toFixed(1).replace(".", ",");
+  return String(v);
+}
+
+/* ============================================================
+   TABEL BERSAMA — satu definisi kolom dipakai CSV maupun Excel
+   ============================================================ */
+function tableDetail(){
+  const { from, to } = periodRange();
+  const withFine = !!db.settings.fineEnabled;
+  const cols = [
+    { h:"Tanggal", t:"s", w:11 }, { h:"Hari", t:"s", w:6 },
+    { h:"Nama", t:"s", w:20 }, { h:"Posisi", t:"s", w:14 },
+    { h:"Shift", t:"s", w:10 }, { h:"Jadwal Masuk", t:"s", w:9 }, { h:"Jadwal Pulang", t:"s", w:9 },
+    { h:"Jam Masuk", t:"s", w:9 }, { h:"Jam Pulang", t:"s", w:9 },
+    { h:"Terlambat (menit)", t:"int", w:10 },
+    ...(withFine ? [{ h:"Denda (Rp)", t:"money", w:13 }] : []),
+    { h:"Pulang Cepat (menit)", t:"int", w:11 }, { h:"Lembur (menit)", t:"int", w:10 },
+    { h:"Durasi Kerja (menit)", t:"int", w:11 }, { h:"Durasi Kerja (jam)", t:"dec", w:11 },
+    { h:"Cocok Wajah Masuk (%)", t:"int", w:11 }, { h:"Cocok Wajah Pulang (%)", t:"int", w:11 },
+    { h:"Lat Masuk", t:"coord", w:12 }, { h:"Lon Masuk", t:"coord", w:12 },
+    { h:"Akurasi Masuk (m)", t:"int", w:10 }, { h:"Jarak Masuk (m)", t:"int", w:10 },
+    { h:"Lat Pulang", t:"coord", w:12 }, { h:"Lon Pulang", t:"coord", w:12 },
+    { h:"Akurasi Pulang (m)", t:"int", w:10 }, { h:"Jarak Pulang (m)", t:"int", w:10 },
+    { h:"Status", t:"s", w:28 }, { h:"Catatan", t:"s", w:24 }
+  ];
+  const rows = [];
+  const recs = db.records.filter(r => r.date >= from && r.date <= to)
+    .sort((a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.inAt - b.inAt));
+  for(const r of recs){
+    const e = db.employees.find(x => x.id === r.empId); if(!e) continue;
+    const [y,m,d] = r.date.split("-").map(Number);
+    const sh = shiftOn(e, r.date);
+    const flags = [];
+    if(!sh) flags.push("Di luar jadwal");
+    if(r.lateMin > 0) flags.push("Terlambat");
+    if(!r.outAt) flags.push("Belum absen pulang");
+    if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
+    if(r.inGeoFlag || r.outGeoFlag) flags.push("Lokasi di luar area");
+    if(r.edited) flags.push("Diedit admin");
+    const n = v => (v === null || v === undefined) ? "" : v;
+    rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "",
+      sh ? sh.name : "", sh ? sh.start : "", sh ? sh.end : "",
+      hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0,
+      ...(withFine ? [fineFor(r.lateMin)] : []),
+      r.earlyMin || 0, r.otMin || 0, r.workMin || 0, (r.workMin || 0)/60,
+      r.inScore == null ? "" : r.inScore, r.outScore == null ? "" : r.outScore,
+      n(r.inLat), n(r.inLon), n(r.inAcc), n(r.inDist),
+      n(r.outLat), n(r.outLon), n(r.outAcc), n(r.outDist),
+      flags.join(", ") || "Normal", r.note || ""]);
+  }
+  return { name:"Detail", cols, rows, total:null };
+}
+function tableRekap(){
+  const withFine = !!db.settings.fineEnabled;
+  const cols = [
+    { h:"Nama", t:"s", w:22 }, { h:"Posisi", t:"s", w:14 },
+    { h:"Hari Kerja Terjadwal", t:"int", w:11 }, { h:"Hadir", t:"int", w:8 },
+    { h:"Alpa", t:"int", w:8 }, { h:"Jumlah Telat", t:"int", w:10 },
+    { h:"Total Telat (menit)", t:"int", w:11 },
+    ...(withFine ? [{ h:"Total Denda (Rp)", t:"money", w:15 }] : []),
+    { h:"Total Kerja (menit)", t:"int", w:11 }, { h:"Total Kerja (jam)", t:"dec", w:11 },
+    { h:"Total Lembur (menit)", t:"int", w:11 }, { h:"Total Lembur (jam)", t:"dec", w:11 }
+  ];
+  const all = summarize();
+  const rows = all.map(r => [r.e.name, r.e.role || "", r.sched, r.hadir, r.alpa,
+    r.lateCnt, r.lateMin, ...(withFine ? [r.fine] : []),
+    r.workMin, r.workMin/60, r.otMin, r.otMin/60]);
+  let total = null;
+  if(all.length){
+    const tot = f => all.reduce((a,r) => a + r[f], 0);
+    total = ["TOTAL","","","","", tot("lateCnt"), tot("lateMin"),
+      ...(withFine ? [tot("fine")] : []),
+      tot("workMin"), tot("workMin")/60, tot("otMin"), tot("otMin")/60];
+  }
+  return { name:"Rekap", cols, rows, total };
+}
+function tableInfo(){
+  const s = db.settings, { label, from, to } = periodRange();
+  const cols = [{ h:"Keterangan", t:"s", w:30 }, { h:"Nilai", t:"s", w:44 }];
+  const rows = [
+    ["Nama cafe", s.cafeName || "—"],
+    ["Periode", label],
+    ["Rentang tanggal", `${from} s/d ${to}`],
+    ["Diekspor", new Date().toLocaleString("id-ID")],
+    ["Jumlah karyawan", String(db.employees.length)],
+    ["Jumlah catatan absen", String(db.records.length)],
+    ["", ""],
+    ["Toleransi telat umum", `${s.tolerance} menit`],
+    ["Lembur dihitung dari", `${s.minOvertime} menit setelah jam pulang`],
+    ["Denda keterlambatan", s.fineEnabled ? "Aktif" : "Nonaktif"],
+    ...(s.fineEnabled ? tiers().map((t,i) => [`  ${tierLabel(i)}`, rupiah(t.amount)]) : []),
+    ["", ""],
+    ["Verifikasi wajah", { strict:"Wajib cocok", warn:"Peringatan saja", off:"Nonaktif" }[s.faceMode]],
+    ["Ambang kecocokan wajah", `${s.faceThreshold}%`],
+    ["Pembatasan lokasi", { strict:"Wajib di area", warn:"Peringatan saja", off:"Nonaktif" }[s.geoMode]],
+    ["Titik cafe", geoAktif() ? `${s.geoLat}, ${s.geoLon}` : "belum diisi"],
+    ["Radius area", `${s.geoRadius} meter`],
+    ["", ""],
+    ["Shift terdaftar", String(db.shifts.length)],
+    ...db.shifts.map(sh => [`  ${sh.code} — ${sh.name}`, `${sh.start}–${sh.end} (${fmtDur(shiftSpan(sh))})`])
+  ];
+  return { name:"Info", cols, rows, total:null };
+}
+
+/* ============================================================
+   PENULIS XLSX — ZIP + OOXML dirakit sendiri, tanpa library
+   ============================================================ */
+let crcTable = null;
+function crc32(bytes){
+  if(!crcTable){
+    crcTable = new Uint32Array(256);
+    for(let n=0; n<256; n++){
+      let c = n;
+      for(let k=0; k<8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let c = 0xFFFFFFFF;
+  for(let i=0; i<bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function deflateRaw(bytes){
+  if(typeof CompressionStream === "undefined") return null;
+  try{
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+    const buf = await new Response(stream).arrayBuffer();
+    return new Uint8Array(buf);
+  }catch(e){ return null; }   // browser lama: simpan tanpa kompresi
+}
+const utf8 = s => new TextEncoder().encode(s);
+
+async function zipFiles(files){
+  const enc = [];
+  for(const f of files){
+    const raw = typeof f.data === "string" ? utf8(f.data) : f.data;
+    const comp = await deflateRaw(raw);
+    enc.push({ name: utf8(f.name), raw, body: comp || raw, method: comp ? 8 : 0, crc: crc32(raw) });
+  }
+  const now = new Date();
+  const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+
+  let size = 0;
+  for(const e of enc) size += 30 + e.name.length + e.body.length + 46 + e.name.length;
+  size += 22;
+  const out = new Uint8Array(size);
+  const dv = new DataView(out.buffer);
+  let p = 0;
+  const u16 = v => { dv.setUint16(p, v, true); p += 2; };
+  const u32 = v => { dv.setUint32(p, v >>> 0, true); p += 4; };
+  const raw = b => { out.set(b, p); p += b.length; };
+
+  for(const e of enc){
+    e.offset = p;
+    u32(0x04034b50); u16(20); u16(0); u16(e.method); u16(dosTime); u16(dosDate);
+    u32(e.crc); u32(e.body.length); u32(e.raw.length); u16(e.name.length); u16(0);
+    raw(e.name); raw(e.body);
+  }
+  const cdStart = p;
+  for(const e of enc){
+    u32(0x02014b50); u16(20); u16(20); u16(0); u16(e.method); u16(dosTime); u16(dosDate);
+    u32(e.crc); u32(e.body.length); u32(e.raw.length);
+    u16(e.name.length); u16(0); u16(0); u16(0); u16(0); u32(0); u32(e.offset);
+    raw(e.name);
+  }
+  const cdSize = p - cdStart;
+  u32(0x06054b50); u16(0); u16(0); u16(enc.length); u16(enc.length); u32(cdSize); u32(cdStart); u16(0);
+  return out.subarray(0, p);
+}
+
+const xmlEsc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&apos;" }[c]));
+function colLetter(i){
+  let s = "";
+  for(i += 1; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + ((i - 1) % 26)) + s;
+  return s;
+}
+/* indeks gaya di styles.xml */
+const ST = { text:0, title:1, head:2, int:3, dec:4, money:5, coord:6,
+             totText:7, totInt:8, totMoney:9, totDec:10 };
+function styleFor(t, isTotal){
+  const map = { s:"text", int:"int", dec:"dec", money:"money", coord:"coord" };
+  const base = map[t] || "text";
+  if(!isTotal) return ST[base];
+  const tot = { text:"totText", int:"totInt", dec:"totDec", money:"totMoney", coord:"totInt" };
+  return ST[tot[base]];
+}
+function cellXml(ref, v, col, isTotal){
+  if(v === null || v === undefined || v === "") return "";
+  const s = styleFor(col.t, isTotal);
+  const numeric = col.t !== "s" && v !== "" && isFinite(Number(v));
+  if(numeric) return `<c r="${ref}" s="${s}"><v>${Number(v)}</v></c>`;
+  return `<c r="${ref}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
+}
+function sheetXml(t){
+  const cols = t.cols;
+  const colsXml = `<cols>${cols.map((c,i) =>
+    `<col min="${i+1}" max="${i+1}" width="${c.w}" customWidth="1"/>`).join("")}</cols>`;
+  const body = [];
+  body.push(`<row r="1" ht="28" customHeight="1">${cols.map((c,i) =>
+    `<c r="${colLetter(i)}1" s="${ST.head}" t="inlineStr"><is><t>${xmlEsc(c.h)}</t></is></c>`).join("")}</row>`);
+  let rn = 1;
+  for(const r of t.rows){
+    rn++;
+    body.push(`<row r="${rn}">${r.map((v,i) => cellXml(colLetter(i)+rn, v, cols[i], false)).join("")}</row>`);
+  }
+  if(t.total){
+    rn++;
+    body.push(`<row r="${rn}">${t.total.map((v,i) =>
+      cellXml(colLetter(i)+rn, v, cols[i], true)).join("")}</row>`);
+  }
+  const last = colLetter(cols.length - 1);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
+  + `<sheetViews><sheetView workbookViewId="0">`
+  + `<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+  + `<sheetFormatPr defaultRowHeight="15"/>${colsXml}`
+  + `<sheetData>${body.join("")}</sheetData>`
+  + `<autoFilter ref="A1:${last}1"/></worksheet>`;
+}
+function stylesXml(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
+  + `<numFmts count="4">`
+  + `<numFmt numFmtId="164" formatCode="#,##0"/>`
+  + `<numFmt numFmtId="165" formatCode="0.0"/>`
+  + `<numFmt numFmtId="166" formatCode="&quot;Rp&quot;\\ #,##0"/>`
+  + `<numFmt numFmtId="167" formatCode="0.000000"/>`
+  + `</numFmts>`
+  + `<fonts count="4">`
+  + `<font><sz val="11"/><name val="Calibri"/></font>`
+  + `<font><b/><sz val="11"/><name val="Calibri"/></font>`
+  + `<font><b/><sz val="14"/><name val="Calibri"/></font>`
+  + `<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>`
+  + `</fonts>`
+  + `<fills count="3">`
+  + `<fill><patternFill patternType="none"/></fill>`
+  + `<fill><patternFill patternType="gray125"/></fill>`
+  + `<fill><patternFill patternType="solid"><fgColor rgb="FF7A4E0C"/><bgColor indexed="64"/></patternFill></fill>`
+  + `</fills>`
+  + `<borders count="2">`
+  + `<border><left/><right/><top/><bottom/><diagonal/></border>`
+  + `<border><left/><right/><top style="thin"><color rgb="FF7A4E0C"/></top><bottom/><diagonal/></border>`
+  + `</borders>`
+  + `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`
+  + `<cellXfs count="11">`
+  + `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`
+  + `<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>`
+  + `<xf numFmtId="0" fontId="3" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>`
+  + `<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`
+  + `<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`
+  + `<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`
+  + `<xf numFmtId="167" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`
+  + `<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>`
+  + `<xf numFmtId="164" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>`
+  + `<xf numFmtId="166" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>`
+  + `<xf numFmtId="165" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>`
+  + `</cellXfs></styleSheet>`;
+}
+async function buildXLSX(){
+  const tabs = [tableRekap(), tableDetail(), tableInfo()];
+  const files = [
+    { name:"[Content_Types].xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
+      + `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`
+      + `<Default Extension="xml" ContentType="application/xml"/>`
+      + `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
+      + tabs.map((_,i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")
+      + `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`
+      + `</Types>` },
+    { name:"_rels/.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>`
+      + `</Relationships>` },
+    { name:"xl/workbook.xml", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"`
+      + ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>`
+      + tabs.map((t,i) => `<sheet name="${xmlEsc(t.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")
+      + `</sheets></workbook>` },
+    { name:"xl/_rels/workbook.xml.rels", data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+      + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+      + tabs.map((_,i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")
+      + `<Relationship Id="rId${tabs.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+      + `</Relationships>` },
+    { name:"xl/styles.xml", data: stylesXml() },
+    ...tabs.map((t,i) => ({ name:`xl/worksheets/sheet${i+1}.xml`, data: sheetXml(t) }))
+  ];
+  const bytes = await zipFiles(files);
+  const { label } = periodRange();
+  return { bytes, name:`absensi-${label.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}.xlsx` };
+}
+async function exportXLSX(){
+  try{
+    toast("Menyiapkan file Excel…");
+    const { bytes, name } = await buildXLSX();
+    const ok = downloadBytes(name, bytes,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    if(!ok) toast("Unduhan diblokir browser — pakai Salin CSV sebagai teks");
+  }catch(e){
+    toast("Gagal membuat file Excel: " + e.message);
+  }
+}
+function downloadBytes(name, bytes, mime){
+  try{
+    const url = URL.createObjectURL(new Blob([bytes], { type:mime }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 8000);
+    toast("File diunduh: " + name);
+    return true;
+  }catch(e){ return false; }
 }
 function download(name, text, mime){
   try{
@@ -2299,6 +2577,7 @@ document.addEventListener("click", async (ev) => {
     case "keepshot": keepShot(); break;
     case "override": overrideAdmin(); break;
     case "saveabsen": saveAbsen(); break;
+    case "xlsx": exportXLSX(); break;
     case "csv": exportCSV(t.dataset.kind); break;
     case "csvt": showText(t.dataset.kind); break;
     case "togfine":

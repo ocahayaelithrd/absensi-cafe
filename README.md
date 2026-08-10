@@ -21,7 +21,7 @@ Foto selfie selalu disimpan sebagai bukti.
   pembatasan radius area cafe
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
 - **Urutan nama A–Z / Z–A** yang berlaku serempak di semua daftar
-- **Ekspor CSV** detail dan rekap untuk perhitungan gaji
+- **Ekspor Excel (.xlsx)** tiga lembar, plus CSV detail dan rekap
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
   salah, cadangkan dan pulihkan data
 
@@ -69,6 +69,30 @@ otomatis. Telat 0 menit tidak pernah kena denda. Denda dihitung saat ditampilkan
 bukan disimpan di catatan absen, sehingga perubahan tarif langsung berlaku
 konsisten di seluruh rekap. Seluruh fitur denda bisa dimatikan lewat satu sakelar
 — saat mati, kolomnya hilang dari rekap maupun CSV.
+
+## Ekspor
+
+**Excel (.xlsx)** — satu berkas berisi tiga lembar:
+
+| Lembar | Isi |
+| --- | --- |
+| Rekap | Ringkasan per karyawan beserta baris total |
+| Detail | Satu baris per catatan absen, lengkap dengan shift, denda, dan koordinat |
+| Info | Periode, waktu ekspor, dan seluruh pengaturan yang berlaku saat itu |
+
+Angka ditulis sebagai angka sungguhan dengan format sel — rupiah, bilangan bulat,
+desimal, dan koordinat enam angka di belakang koma — sehingga langsung bisa
+dijumlahkan atau dijadikan pivot tanpa dibersihkan dulu. Baris kepala dibekukan
+dan diberi filter otomatis.
+
+Berkasnya dirakit sendiri di dalam aplikasi: XML SpreadsheetML dikemas ke ZIP
+dengan CRC-32 buatan sendiri dan kompresi lewat `CompressionStream("deflate-raw")`
+bawaan browser, dengan cadangan tanpa kompresi bila API itu tidak tersedia. Tidak
+ada library luar, sesuai sifat aplikasi yang satu berkas dan bekerja luring.
+
+**CSV** tetap tersedia untuk detail dan rekap, memakai pemisah titik koma dan
+desimal koma agar cocok dengan Excel berlokal Indonesia. Bila unduhan diblokir
+browser, tersedia pilihan menyalin isinya sebagai teks.
 
 ## Urutan nama
 
