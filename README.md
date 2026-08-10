@@ -21,7 +21,7 @@ Foto selfie selalu disimpan sebagai bukti.
   pembatasan radius area cafe
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
 - **Urutan nama A–Z / Z–A** yang berlaku serempak di semua daftar
-- **Ekspor Excel (.xlsx)** tiga lembar, plus CSV detail dan rekap
+- **Ekspor Excel (.xlsx)** tiga lembar untuk perhitungan gaji
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
   salah, cadangkan dan pulihkan data
 
@@ -68,11 +68,11 @@ Tingkatan bisa ditambah, dihapus, dan diubah tarifnya; urutannya dirapikan
 otomatis. Telat 0 menit tidak pernah kena denda. Denda dihitung saat ditampilkan,
 bukan disimpan di catatan absen, sehingga perubahan tarif langsung berlaku
 konsisten di seluruh rekap. Seluruh fitur denda bisa dimatikan lewat satu sakelar
-— saat mati, kolomnya hilang dari rekap maupun CSV.
+— saat mati, kolomnya hilang dari rekap maupun Excel.
 
 ## Ekspor
 
-**Excel (.xlsx)** — satu berkas berisi tiga lembar:
+Ekspor hanya menghasilkan **Excel (.xlsx)**, satu berkas berisi tiga lembar:
 
 | Lembar | Isi |
 | --- | --- |
@@ -90,14 +90,15 @@ dengan CRC-32 buatan sendiri dan kompresi lewat `CompressionStream("deflate-raw"
 bawaan browser, dengan cadangan tanpa kompresi bila API itu tidak tersedia. Tidak
 ada library luar, sesuai sifat aplikasi yang satu berkas dan bekerja luring.
 
-**CSV** tetap tersedia untuk detail dan rekap, memakai pemisah titik koma dan
-desimal koma agar cocok dengan Excel berlokal Indonesia. Bila unduhan diblokir
-browser, tersedia pilihan menyalin isinya sebagai teks.
+Terpisah dari ekspor, tombol **Cadangkan (JSON)** di Setelan menyimpan seluruh
+data mentah — pengaturan, karyawan, shift, roster, dan catatan absen — untuk
+dipulihkan lagi lewat tombol **Pulihkan**. Cadangan itu untuk memindahkan atau
+menyelamatkan data, bukan untuk dibaca manusia.
 
 ## Urutan nama
 
 Semua daftar karyawan diurutkan menurut nama: layar absen, grid jadwal, daftar
-orang, tabel rekap, pilihan absen manual, dan ekspor CSV. Arahnya diubah lewat
+orang, tabel rekap, pilihan absen manual, dan ekspor Excel. Arahnya diubah lewat
 tombol **Nama A–Z** di layar absen dan daftar orang, atau dengan mengetuk kolom
 **Karyawan** pada tabel jadwal dan rekap. Satu pilihan berlaku serempak di semua
 layar dan tersimpan di HP.
@@ -127,7 +128,7 @@ lebih. Radius di bawah 50 meter cenderung menolak karyawan yang sebenarnya sudah
 berada di cafe. Pakai **Uji Jarak** beberapa kali dari titik-titik berbeda di
 dalam cafe, ambil jarak terbesar yang muncul, lalu tambahkan margin akurasi.
 
-Koordinat, akurasi, dan jarak ikut terekspor ke CSV. Di rincian catatan absen,
+Koordinat, akurasi, dan jarak ikut terekspor ke Excel. Di rincian catatan absen,
 tiap titik bisa dibuka di Google Maps. Semua data lokasi tersimpan di HP itu
 saja dan tidak dikirim ke mana pun.
 
@@ -164,5 +165,5 @@ ulang wajah karyawan.
 
 Semua data tersimpan di HP itu saja — pengaturan dan catatan absen di
 `localStorage`, foto di `IndexedDB`. Tidak ada server dan tidak ada akun.
-Ekspor CSV setiap tutup buku dan gunakan **Cadangkan (JSON)** secara berkala;
+Ekspor Excel setiap tutup buku dan gunakan **Cadangkan (JSON)** secara berkala;
 bila HP hilang atau di-reset, datanya ikut hilang.

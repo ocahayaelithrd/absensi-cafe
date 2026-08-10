@@ -1635,7 +1635,6 @@ function secRekap(){
   const { label } = periodRange();
   const flagged = db.records.filter(r => (r.inFlag || r.outFlag)).length;
   const geoFlagged = db.records.filter(r => (r.inGeoFlag || r.outGeoFlag)).length;
-  const anyData = rows.some(r => r.recs.length);
   return `
   <div class="field">
     <label for="per">Periode</label>
@@ -1677,14 +1676,7 @@ function secRekap(){
     <div class="hint">Satu berkas berisi tiga lembar: <b>Rekap</b> ringkasan per karyawan,
       <b>Detail</b> per hari, dan <b>Info</b> pengaturan yang dipakai saat ekspor. Angka sudah bertipe
       angka, jadi bisa langsung dijumlahkan atau dibuat pivot.</div>
-    <div class="btnrow">
-      <button class="btn" data-act="csv" data-kind="detail" ${anyData ? "" : "disabled"}>CSV Detail</button>
-      <button class="btn" data-act="csv" data-kind="rekap" ${db.employees.length ? "" : "disabled"}>CSV Rekap</button>
-    </div>
     <button class="btn ghost blk" data-act="manual" ${db.employees.length ? "" : "disabled"}>Tambah Absen Manual</button>
-    <div class="hint">Unduhan diblokir browser? Salin sebagai teks:
-      <b data-act="csvt" data-kind="detail" style="color:var(--accent);cursor:pointer">Detail</b> ·
-      <b data-act="csvt" data-kind="rekap" style="color:var(--accent);cursor:pointer">Rekap</b></div>
   </div>`;
 }
 function openEmpDetail(id){
@@ -1989,7 +1981,7 @@ function secSetelan(){
     <span class="hint">GPS di dalam ruangan biasanya meleset 20–50 meter, kadang lebih.
       Radius di bawah 50 meter cenderung menolak karyawan yang sebenarnya sudah di cafe.
       Pakai <b>Uji Jarak</b> beberapa kali dari dalam cafe untuk mencari angka yang aman.</span></div>
-  <div class="note">Koordinat absen disimpan di HP ini saja dan ikut terbawa saat ekspor CSV
+  <div class="note">Koordinat absen disimpan di HP ini saja dan ikut terbawa saat ekspor Excel
     maupun cadangan. Tidak ada yang dikirim ke server mana pun.</div>
 
   <div class="sect"><h2>Keamanan</h2></div>
@@ -2017,7 +2009,7 @@ function secSetelan(){
     <b style="color:var(--text)">Taruh HP di posisi tetap.</b> Dudukan permanen di dekat kasir dengan
     pencahayaan stabil membuat pencocokan wajah jauh lebih akurat.<br><br>
     <b style="color:var(--text)">Daftar ulang wajah</b> bila HP dipindah atau lampu cafe diganti.<br><br>
-    <b style="color:var(--text)">Cadangkan tiap bulan</b> setelah ekspor CSV — data tersimpan hanya di HP ini.
+    <b style="color:var(--text)">Cadangkan tiap bulan</b> setelah ekspor Excel — data tersimpan hanya di HP ini.
   </div>`;
 }
 async function showUsage(){
@@ -2061,7 +2053,8 @@ async function changePin(){
 }
 function backup(){
   const payload = JSON.stringify({ app:"absensi-cafe", version:1, exportedAt:new Date().toISOString(), data:db }, null, 1);
-  download(`cadangan-absensi-${dkey()}.json`, payload, "application/json");
+  if(!downloadBytes(`cadangan-absensi-${dkey()}.json`, utf8(payload), "application/json;charset=utf-8"))
+    toast("Unduhan diblokir browser — buka aplikasi langsung di Chrome, bukan di dalam aplikasi lain");
 }
 function restoreFile(file){
   const fr = new FileReader();
@@ -2094,33 +2087,8 @@ function resetAll(){
   save(); render(); toast("Semua data dihapus");
 }
 
-/* ---- CSV ---- */
-function csvCell(v){
-  const s = String(v == null ? "" : v);
-  return /[";\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
-}
-function buildCSV(kind){
-  const { label } = periodRange();
-  const t = kind === "detail" ? tableDetail() : tableRekap();
-  const rows = [t.cols.map(c => c.h)];
-  for(const r of t.rows) rows.push(r.map((v,i) => csvVal(v, t.cols[i])));
-  if(t.total){ rows.push([]); rows.push(t.total.map((v,i) => csvVal(v, t.cols[i]))); }
-  const meta = [["Rekap Absensi", db.settings.cafeName], ["Periode", label],
-                ["Diekspor", new Date().toLocaleString("id-ID")]];
-  const head = meta.map(r => r.map(csvCell).join(";")).join("\n") + "\n\n";
-  return { text: head + rows.map(r => r.map(csvCell).join(";")).join("\n"),
-           name: `absensi-${kind}-${label.toLowerCase().replace(/\s+/g,"-")}.csv` };
-}
-/* Angka ditulis apa adanya di tabel bersama; CSV memakai koma desimal
-   ala Indonesia, sedangkan Excel menerima angka mentah plus format sel. */
-function csvVal(v, c){
-  if(v === null || v === undefined || v === "") return "";
-  if(c.t === "dec") return Number(v).toFixed(1).replace(".", ",");
-  return String(v);
-}
-
 /* ============================================================
-   TABEL BERSAMA — satu definisi kolom dipakai CSV maupun Excel
+   TABEL — definisi kolom untuk lembar-lembar Excel
    ============================================================ */
 function tableDetail(){
   const { from, to } = periodRange();
@@ -2413,7 +2381,7 @@ async function exportXLSX(){
     const { bytes, name } = await buildXLSX();
     const ok = downloadBytes(name, bytes,
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    if(!ok) toast("Unduhan diblokir browser — pakai Salin CSV sebagai teks");
+    if(!ok) toast("Unduhan diblokir browser — buka aplikasi langsung di Chrome, bukan di dalam aplikasi lain");
   }catch(e){
     toast("Gagal membuat file Excel: " + e.message);
   }
@@ -2428,44 +2396,6 @@ function downloadBytes(name, bytes, mime){
     toast("File diunduh: " + name);
     return true;
   }catch(e){ return false; }
-}
-function download(name, text, mime){
-  try{
-    const blob = new Blob(["﻿" + text], { type:(mime||"text/csv") + ";charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = name; a.rel = "noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 4000);
-    toast("File diunduh: " + name);
-    return true;
-  }catch(e){ return false; }
-}
-function exportCSV(kind){
-  const { text, name } = buildCSV(kind);
-  if(!download(name, text)) showText(name, text);
-}
-function showText(kindOrName, maybeText){
-  // dipakai bila unduhan diblokir, atau bila admin sengaja memilih "salin teks"
-  const { text, name } = maybeText !== undefined
-    ? { text:maybeText, name:kindOrName }
-    : buildCSV(kindOrName);
-  sheet(`<h3>Salin CSV</h3>
-    <div class="sub">${esc(name)}</div>
-    <div class="hint" style="margin-bottom:14px">Salin teks di bawah, lalu tempel ke Excel atau
-      Google Sheets. Kolom dipisahkan tanda titik koma.</div>
-    <textarea readonly id="csvtext" style="min-height:160px;font-family:var(--f-mono);font-size:11px">${esc(text)}</textarea>
-    <div style="height:10px"></div>
-    <div class="btnrow"><button class="btn" data-act="copycsv">Salin Teks</button>
-      <button class="btn pri" data-act="scrim">Tutup</button></div>`);
-}
-function copyCSV(){
-  const t = el("csvtext"); if(!t) return;
-  t.select(); t.setSelectionRange(0, t.value.length);
-  const done = () => toast("Teks CSV disalin");
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(t.value).then(done, () => { document.execCommand("copy"); done(); });
-  }else{ try{ document.execCommand("copy"); done(); }catch(e){ toast("Salin manual dengan tekan lama"); } }
 }
 
 /* ============================================================
@@ -2578,8 +2508,6 @@ document.addEventListener("click", async (ev) => {
     case "override": overrideAdmin(); break;
     case "saveabsen": saveAbsen(); break;
     case "xlsx": exportXLSX(); break;
-    case "csv": exportCSV(t.dataset.kind); break;
-    case "csvt": showText(t.dataset.kind); break;
     case "togfine":
       db.settings.fineEnabled = !db.settings.fineEnabled;
       save(); render(); showUsage();
@@ -2637,7 +2565,6 @@ document.addEventListener("click", async (ev) => {
     case "backup": backup(); break;
     case "prune": pruneOld(false); break;
     case "reset": resetAll(); break;
-    case "copycsv": copyCSV(); break;
   }
 });
 
