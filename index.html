@@ -172,6 +172,20 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .sw[aria-pressed="true"]{background:var(--ok)}
 .sw[aria-pressed="true"]::after{transform:translateX(19px)}
 
+/* ---- tingkatan denda ---- */
+.tiers{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden}
+.tier{background:var(--surface);padding:10px 12px 11px;display:flex;flex-direction:column;gap:7px}
+.tier-lbl{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);font-weight:600}
+.tier-in{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tier-sub{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.tier-sub input{width:82px;padding:7px 9px;font-size:14px}
+.tier-open{font-size:11px;color:var(--faint);letter-spacing:.04em}
+.tier-del{margin-left:auto;background:none;border:1px solid var(--line);color:var(--late);
+  width:30px;height:30px;border-radius:8px;font-size:17px;line-height:1;cursor:pointer;flex:none}
+.tier-del:active{background:var(--late-soft)}
+
 /* ---- list rows (receipt) ---- */
 .list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
 .item{display:flex;align-items:center;gap:11px;padding:11px 12px;width:100%;background:none;border:0;
@@ -193,6 +207,8 @@ th:first-child{background:var(--bg2)}
 tbody tr:last-child td{border-bottom:0}
 td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 tbody tr{cursor:pointer}
+tfoot td{border-top:1px solid var(--line);border-bottom:0;background:var(--bg2)}
+tfoot td:first-child{background:var(--bg2)}
 
 /* ---- empty / notes ---- */
 .empty{text-align:center;padding:34px 20px;color:var(--muted);font-size:13.5px;line-height:1.6}
@@ -310,6 +326,7 @@ const parseHM = s => { const [a,b] = String(s||"0:0").split(":").map(Number); re
 const hm = ts => { const d = new Date(ts); return pad(d.getHours())+":"+pad(d.getMinutes()); };
 const fmtDur = m => { m = Math.max(0,Math.round(m||0)); return `${Math.floor(m/60)}j ${pad(m%60)}m`; };
 const fmtJam = m => (Math.max(0,m||0)/60).toFixed(1).replace(".",",");
+const rupiah = n => "Rp " + Math.round(Number(n)||0).toLocaleString("id-ID");
 const longDate = k => { const [y,m,d] = k.split("-").map(Number); const dt = new Date(y,m-1,d);
   return `${DAYS[dt.getDay()]}, ${d} ${MONTHS[m-1]} ${y}`; };
 const shortDate = k => { const [y,m,d] = k.split("-").map(Number); const dt = new Date(y,m-1,d);
@@ -322,7 +339,9 @@ const LS = "absensi_cafe_v1";
 let storageOK = true;
 const DEFAULTS = {
   settings:{ cafeName:"Absensi Cafe", pin:"1234", tolerance:10, minOvertime:30,
-             faceMode:"warn", faceThreshold:65, retention:60 },
+             faceMode:"warn", faceThreshold:65, retention:60,
+             fineEnabled:true,
+             fineTiers:[ {upTo:15, amount:5000}, {upTo:30, amount:15000}, {upTo:null, amount:30000} ] },
   employees:[], records:[]
 };
 let db = JSON.parse(JSON.stringify(DEFAULTS));
@@ -386,6 +405,24 @@ async function photoDel(k){
 
 /* ---------- jadwal, telat, lembur ---------- */
 function tolOf(emp){ const t = emp.tolerance; return (t===null||t===undefined||t==="") ? db.settings.tolerance : Number(t); }
+
+/* Denda keterlambatan bertingkat. Dihitung saat dibutuhkan, bukan disimpan di
+   catatan, supaya perubahan tarif langsung berlaku konsisten di seluruh rekap. */
+function tiers(){ return Array.isArray(db.settings.fineTiers) ? db.settings.fineTiers : []; }
+function fineFor(lateMin){
+  if(!db.settings.fineEnabled || !(lateMin > 0)) return 0;
+  const ts = tiers();
+  for(const t of ts){
+    if(t.upTo === null || t.upTo === undefined || t.upTo === "" || lateMin <= Number(t.upTo)) return Number(t.amount) || 0;
+  }
+  return ts.length ? Number(ts[ts.length-1].amount) || 0 : 0;
+}
+function tierLabel(i){
+  const ts = tiers(), t = ts[i], prev = i > 0 ? Number(ts[i-1].upTo) : 0;
+  const from = (isNaN(prev) ? 0 : prev) + 1;
+  if(t.upTo === null || t.upTo === undefined || t.upTo === "") return `Lebih dari ${from-1} menit`;
+  return `${from}–${t.upTo} menit`;
+}
 function schedule(emp, dateKey){
   const [y,m,d] = dateKey.split("-").map(Number);
   const start = new Date(y, m-1, d, 0, 0, 0, 0);
@@ -859,7 +896,10 @@ async function saveAbsen(){
     db.records.push(rec);
     await photoSet(rec.id + ":in", cam.last.photo);
     save();
-    const msg = rec.lateMin > 0 ? `Masuk ${hm(now)} — terlambat ${fmtDur(rec.lateMin)}` : `Masuk ${hm(now)} — tepat waktu`;
+    const denda = fineFor(rec.lateMin);
+    const msg = rec.lateMin > 0
+      ? `Masuk ${hm(now)} — terlambat ${fmtDur(rec.lateMin)}${denda ? ` · denda ${rupiah(denda)}` : ""}`
+      : `Masuk ${hm(now)} — tepat waktu`;
     closeCam(); render(); toast(`${emp.name}: ${msg}`);
   }else{
     const rec = openRecord(emp.id);
@@ -936,7 +976,9 @@ function viewAbsen(){
     <div class="item" style="cursor:default">
       <div class="grow">
         <div class="t1">${esc(f.name)}</div>
-        <div class="t2">${f.kind}${f.late > 0 ? ` · telat ${fmtDur(f.late)}` : ""}${f.ot > 0 ? ` · lembur ${fmtDur(f.ot)}` : ""}${f.flag ? " · wajah perlu dicek" : ""}</div>
+        <div class="t2">${f.kind}${f.late > 0 ? ` · telat ${fmtDur(f.late)}` : ""}${
+          f.late > 0 && fineFor(f.late) ? ` · denda ${rupiah(fineFor(f.late))}` : ""}${
+          f.ot > 0 ? ` · lembur ${fmtDur(f.ot)}` : ""}${f.flag ? " · wajah perlu dicek" : ""}</div>
       </div>
       <div class="tm">${hm(f.t)}</div>
     </div>`).join("")}</div>`
@@ -1000,6 +1042,7 @@ function openEmpSheet(id){
       <div class="item" style="cursor:default">
         <div class="grow"><div class="t1">${r.outAt ? "Masuk & pulang" : "Masuk"}</div>
           <div class="t2">${r.lateMin > 0 ? `Terlambat ${fmtDur(r.lateMin)}` : "Tepat waktu"}${
+            r.lateMin > 0 && fineFor(r.lateMin) ? ` · denda ${rupiah(fineFor(r.lateMin))}` : ""}${
             r.outAt ? ` · Kerja ${fmtDur(r.workMin)}` : ""}${r.otMin > 0 ? ` · Lembur ${fmtDur(r.otMin)}` : ""}</div></div>
         <div class="tm">${hm(r.inAt)}${r.outAt ? " → " + hm(r.outAt) : " → —"}</div>
       </div>`).join("")}</div>` : ""}
@@ -1052,7 +1095,8 @@ function summarize(){
     const lateCnt = rs.filter(r => r.lateMin > 0).length;
     const sum = (f) => rs.reduce((a,r) => a + (r[f]||0), 0);
     const alpa = Math.max(0, sched - [...hadirDays].filter(k => k <= today && worksOn(e,k)).length);
-    return { e, recs:rs, hadir:hadirDays.size, sched, alpa, lateCnt,
+    const fine = rs.reduce((a,r) => a + fineFor(r.lateMin), 0);
+    return { e, recs:rs, hadir:hadirDays.size, sched, alpa, lateCnt, fine,
              lateMin:sum("lateMin"), workMin:sum("workMin"), otMin:sum("otMin"), earlyMin:sum("earlyMin") };
   });
 }
@@ -1075,7 +1119,8 @@ function secRekap(){
   <div class="sect"><h2>${esc(label)}</h2><span class="lbl">Ketuk baris untuk rincian</span></div>
   ${db.employees.length ? `
   <div class="twrap"><table>
-    <thead><tr><th>Karyawan</th><th>Hadir</th><th>Alpa</th><th>Telat</th><th>Telat&nbsp;(m)</th><th>Kerja&nbsp;(j)</th><th>Lembur&nbsp;(j)</th></tr></thead>
+    <thead><tr><th>Karyawan</th><th>Hadir</th><th>Alpa</th><th>Telat</th><th>Telat&nbsp;(m)</th>${
+      db.settings.fineEnabled ? "<th>Denda</th>" : ""}<th>Kerja&nbsp;(j)</th><th>Lembur&nbsp;(j)</th></tr></thead>
     <tbody>${rows.map(r => `
       <tr data-act="empdetail" data-id="${r.e.id}">
         <td>${esc(r.e.name)}</td>
@@ -1083,9 +1128,14 @@ function secRekap(){
         <td class="num" ${r.alpa ? `style="color:var(--late)"` : ""}>${r.alpa}</td>
         <td class="num" ${r.lateCnt ? `style="color:var(--late)"` : ""}>${r.lateCnt}</td>
         <td class="num">${r.lateMin}</td>
+        ${db.settings.fineEnabled ? `<td class="num" ${r.fine ? `style="color:var(--late)"` : ""}>${r.fine ? rupiah(r.fine) : "—"}</td>` : ""}
         <td class="num">${fmtJam(r.workMin)}</td>
         <td class="num" ${r.otMin ? `style="color:var(--ot)"` : ""}>${fmtJam(r.otMin)}</td>
       </tr>`).join("")}</tbody>
+    ${db.settings.fineEnabled && rows.some(r => r.fine) ? `<tfoot><tr>
+      <td><b>Total denda</b></td><td colspan="4"></td>
+      <td class="num"><b style="color:var(--late)">${rupiah(rows.reduce((a,r) => a + r.fine, 0))}</b></td>
+      <td colspan="2"></td></tr></tfoot>` : ""}
   </table></div>` : `<div class="card"><div class="empty">Belum ada karyawan.</div></div>`}
   <div class="sect"><h2>Ekspor & koreksi</h2></div>
   <div class="stack" style="gap:8px">
@@ -1109,7 +1159,8 @@ function openEmpDetail(id){
     <div class="sub">${esc(label)} · ${rs.length} catatan</div>
     ${rs.length ? `<div class="list">${rs.map(r => {
       const bits = [];
-      if(r.lateMin > 0) bits.push(`<span style="color:var(--late)">telat ${fmtDur(r.lateMin)}</span>`);
+      if(r.lateMin > 0) bits.push(`<span style="color:var(--late)">telat ${fmtDur(r.lateMin)}${
+        fineFor(r.lateMin) ? ` · ${rupiah(fineFor(r.lateMin))}` : ""}</span>`);
       if(r.otMin > 0) bits.push(`<span style="color:var(--ot)">lembur ${fmtDur(r.otMin)}</span>`);
       if(r.earlyMin > 0) bits.push(`pulang cepat ${fmtDur(r.earlyMin)}`);
       if(!r.outAt) bits.push(`<b>belum absen pulang</b>`);
@@ -1318,6 +1369,36 @@ function secSetelan(){
   <div class="field"><span class="hint">Lembur baru dihitung bila karyawan pulang lebih dari
     ${s.minOvertime} menit setelah jam pulang jadwalnya.</span></div>
 
+  <div class="sect"><h2>Denda keterlambatan</h2></div>
+  <div class="toggle"><div><div style="font-weight:600">Hitung denda otomatis</div>
+    <div class="hint">Denda dihitung dari menit telat, setelah toleransi dipotong.</div></div>
+    <button class="sw" data-act="togfine" aria-pressed="${!!s.fineEnabled}" aria-label="Hitung denda otomatis"></button></div>
+  ${s.fineEnabled ? `
+  <div class="tiers">
+    ${tiers().map((t,i) => {
+      const last = i === tiers().length - 1;
+      return `<div class="tier">
+        <div class="tier-lbl" id="tierlbl${i}">${tierLabel(i)}</div>
+        <div class="tier-in">
+          ${last ? `<span class="tier-open mono">tanpa batas atas</span>`
+                 : `<label class="tier-sub">sampai
+                      <input type="number" min="1" max="600" value="${t.upTo}" data-act="tier" data-i="${i}" data-f="upTo"> menit
+                    </label>`}
+          <label class="tier-sub">Rp
+            <input type="number" min="0" step="1000" value="${Number(t.amount)||0}" data-act="tier" data-i="${i}" data-f="amount">
+          </label>
+          ${tiers().length > 1 ? `<button class="tier-del" data-act="deltier" data-i="${i}" aria-label="Hapus tingkatan ${i+1}">&times;</button>` : ""}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>
+  <button class="btn sm ghost blk" data-act="addtier" style="margin-top:10px">+ Tambah Tingkatan</button>
+  <div class="note" style="margin-top:12px">Contoh dengan tarif sekarang: telat
+    ${(() => { const ts = tiers(); const probe = ts.length > 1 ? Math.max(1, Number(ts[0].upTo)) : 20;
+       return `${probe} menit → ${rupiah(fineFor(probe))}`; })()}.
+    Telat 0 menit tidak pernah kena denda. Mengubah tarif langsung berlaku pada seluruh rekap,
+    termasuk bulan-bulan sebelumnya.</div>` : ""}
+
   <div class="sect"><h2>Verifikasi wajah</h2></div>
   <div class="field"><label for="sf">Mode</label>
     <select id="sf" data-act="setting" data-k="faceMode">
@@ -1441,9 +1522,11 @@ function csvCell(v){
 function buildCSV(kind){
   const { from, to, label } = periodRange();
   const rows = [];
+  const withFine = !!db.settings.fineEnabled;
   if(kind === "detail"){
     rows.push(["Tanggal","Hari","Nama","Posisi","Jadwal Masuk","Jadwal Pulang","Jam Masuk","Jam Pulang",
-      "Terlambat (menit)","Pulang Cepat (menit)","Lembur (menit)","Durasi Kerja (menit)","Durasi Kerja (jam)",
+      "Terlambat (menit)", ...(withFine ? ["Denda (Rp)"] : []),
+      "Pulang Cepat (menit)","Lembur (menit)","Durasi Kerja (menit)","Durasi Kerja (jam)",
       "Cocok Wajah Masuk (%)","Cocok Wajah Pulang (%)","Status","Catatan"]);
     const recs = db.records.filter(r => r.date >= from && r.date <= to)
       .sort((a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.inAt - b.inAt));
@@ -1456,16 +1539,26 @@ function buildCSV(kind){
       if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
       if(r.edited) flags.push("Diedit admin");
       rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "", e.jamMasuk, e.jamPulang,
-        hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0, r.earlyMin || 0, r.otMin || 0,
+        hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0, ...(withFine ? [fineFor(r.lateMin)] : []),
+        r.earlyMin || 0, r.otMin || 0,
         r.workMin || 0, fmtJam(r.workMin), r.inScore == null ? "" : r.inScore,
         r.outScore == null ? "" : r.outScore, flags.join(", ") || "Normal", r.note || ""]);
     }
   }else{
     rows.push(["Nama","Posisi","Jadwal","Hari Kerja Terjadwal","Hadir","Alpa","Jumlah Telat",
-      "Total Telat (menit)","Total Kerja (menit)","Total Kerja (jam)","Total Lembur (menit)","Total Lembur (jam)"]);
-    for(const r of summarize()){
+      "Total Telat (menit)", ...(withFine ? ["Total Denda (Rp)"] : []),
+      "Total Kerja (menit)","Total Kerja (jam)","Total Lembur (menit)","Total Lembur (jam)"]);
+    const all = summarize();
+    for(const r of all){
       rows.push([r.e.name, r.e.role || "", `${r.e.jamMasuk}-${r.e.jamPulang}`, r.sched, r.hadir, r.alpa,
-        r.lateCnt, r.lateMin, r.workMin, fmtJam(r.workMin), r.otMin, fmtJam(r.otMin)]);
+        r.lateCnt, r.lateMin, ...(withFine ? [r.fine] : []),
+        r.workMin, fmtJam(r.workMin), r.otMin, fmtJam(r.otMin)]);
+    }
+    if(all.length){
+      const tot = f => all.reduce((a,r) => a + r[f], 0);
+      rows.push([]);
+      rows.push(["TOTAL","","","","","", tot("lateCnt"), tot("lateMin"), ...(withFine ? [tot("fine")] : []),
+        tot("workMin"), fmtJam(tot("workMin")), tot("otMin"), fmtJam(tot("otMin"))]);
     }
   }
   const head = `Rekap Absensi;${db.settings.cafeName}\nPeriode;${label}\nDiekspor;${new Date().toLocaleString("id-ID")}\n\n`;
@@ -1588,6 +1681,29 @@ document.addEventListener("click", async (ev) => {
     case "saveabsen": saveAbsen(); break;
     case "csv": exportCSV(t.dataset.kind); break;
     case "csvt": showText(t.dataset.kind); break;
+    case "togfine":
+      db.settings.fineEnabled = !db.settings.fineEnabled;
+      save(); render(); showUsage();
+      break;
+    case "addtier": {
+      const ts = tiers();
+      const last = ts[ts.length-1];
+      const prev = ts.length > 1 ? Number(ts[ts.length-2].upTo) || 0 : 0;
+      // sisipkan tingkatan baru tepat sebelum tingkatan "tanpa batas atas"
+      ts.splice(ts.length-1, 0, { upTo: prev + 15, amount: Number(last.amount) || 0 });
+      db.settings.fineTiers = ts;
+      save(); render();
+      break;
+    }
+    case "deltier": {
+      const ts = tiers();
+      if(ts.length <= 1) break;
+      ts.splice(Number(t.dataset.i), 1);
+      ts[ts.length-1].upTo = null;      // tingkatan terakhir selalu tanpa batas atas
+      db.settings.fineTiers = ts;
+      save(); render();
+      break;
+    }
     case "changepin": changePin(); break;
     case "backup": backup(); break;
     case "prune": pruneOld(false); break;
@@ -1612,10 +1728,29 @@ document.addEventListener("input", (ev) => {
       if(lab && lab.tagName === "LABEL") lab.textContent = `Ambang kecocokan — ${v}%`;
     }
     if(["tolerance","minOvertime"].includes(k)) recalcAll();
+    return;
+  }
+  if(t.dataset.act === "tier"){
+    const i = Number(t.dataset.i), f = t.dataset.f;
+    const ts = tiers();
+    if(!ts[i]) return;
+    ts[i][f] = f === "upTo" ? Math.max(1, Number(t.value) || 1) : Math.max(0, Number(t.value) || 0);
+    save();
+    // label tiap tingkatan bergantung pada batas tingkatan sebelumnya
+    if(f === "upTo") ts.forEach((_,j) => { const L = el("tierlbl"+j); if(L) L.textContent = tierLabel(j); });
   }
 });
 document.addEventListener("change", (ev) => {
   const t = ev.target;
+  if(t.dataset.act === "tier" && t.dataset.f === "upTo"){
+    // rapikan urutan setelah selesai mengetik, agar tingkatan selalu menaik
+    const ts = tiers();
+    const open = ts[ts.length-1];
+    const rest = ts.slice(0,-1).sort((a,b) => Number(a.upTo) - Number(b.upTo));
+    db.settings.fineTiers = rest.concat([open]);
+    save(); render();
+    return;
+  }
   if(t.dataset.act === "period" && t.value){ period = t.value; render(); return; }
   if(t.id === "restore" && t.files && t.files[0]){ restoreFile(t.files[0]); t.value = ""; return; }
   if(t.dataset.act === "setting" && t.tagName === "SELECT") render();

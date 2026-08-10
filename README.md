@@ -16,10 +16,35 @@ Foto selfie selalu disimpan sebagai bukti.
 - **Jadwal fleksibel per karyawan** — jam masuk, jam pulang, hari kerja, dan
   toleransi telat sendiri-sendiri; shift lintas tengah malam didukung
 - **Hitung otomatis** keterlambatan, pulang cepat, durasi kerja, dan lembur
+- **Denda keterlambatan bertingkat** yang tarif dan batas menitnya diatur sendiri
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
 - **Ekspor CSV** detail dan rekap untuk perhitungan gaji
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
   salah, cadangkan dan pulihkan data
+
+## Keterlambatan dan denda
+
+Telat dihitung otomatis saat karyawan absen masuk:
+
+```
+telat = jam absen masuk − (jam masuk jadwal + toleransi)     // minimum 0
+```
+
+Toleransi diambil dari pengaturan karyawan bila diisi, kalau kosong ikut
+pengaturan umum. Dari menit telat itu, denda ditentukan lewat tingkatan yang
+bisa diatur di **Admin → Pengaturan → Denda keterlambatan**. Bawaannya:
+
+| Telat | Denda |
+| --- | --- |
+| 1–15 menit | Rp 5.000 |
+| 16–30 menit | Rp 15.000 |
+| Lebih dari 30 menit | Rp 30.000 |
+
+Tingkatan bisa ditambah, dihapus, dan diubah tarifnya; urutannya dirapikan
+otomatis. Telat 0 menit tidak pernah kena denda. Denda dihitung saat ditampilkan,
+bukan disimpan di catatan absen, sehingga perubahan tarif langsung berlaku
+konsisten di seluruh rekap. Seluruh fitur denda bisa dimatikan lewat satu sakelar
+— saat mati, kolomnya hilang dari rekap maupun CSV.
 
 ## Verifikasi wajah
 
