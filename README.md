@@ -13,8 +13,8 @@ Foto selfie selalu disimpan sebagai bukti.
 ## Fitur
 
 - **Absen masuk & pulang** dengan selfie dan verifikasi wajah
-- **Jadwal fleksibel per karyawan** — jam masuk, jam pulang, hari kerja, dan
-  toleransi telat sendiri-sendiri; shift lintas tengah malam didukung
+- **Jadwal shift per tanggal** — roster mingguan, shift tiap karyawan bisa
+  berbeda tiap hari; shift lintas tengah malam didukung
 - **Hitung otomatis** keterlambatan, pulang cepat, durasi kerja, dan lembur
 - **Denda keterlambatan bertingkat** yang tarif dan batas menitnya diatur sendiri
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
@@ -22,12 +22,33 @@ Foto selfie selalu disimpan sebagai bukti.
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
   salah, cadangkan dan pulihkan data
 
+## Jadwal shift
+
+Shift cafe berubah-ubah tiap hari, jadi jadwal disusun sebagai **roster**: satu
+shift untuk satu karyawan pada satu tanggal. Buka **Admin → Jadwal** untuk grid
+mingguan (Senin–Minggu), lalu:
+
+- ketuk **satu sel** untuk mengubah sehari,
+- ketuk **nama karyawan** untuk mengisi seminggu sekaligus,
+- ketuk **kepala kolom hari** untuk mengatur semua karyawan pada hari itu,
+- pakai **Salin Minggu Lalu** kalau polanya berulang.
+
+Tiap sel punya tiga keadaan: shift tertentu, **Libur** (tidak dihitung alpa),
+atau **belum dijadwalkan**. Karyawan tetap bisa absen di hari yang tidak
+dijadwalkan — catatannya tersimpan dan ditandai *di luar jadwal*, tapi telat dan
+lembur tidak dihitung karena tidak ada jam acuan.
+
+Pola jam kerja diatur di **Kelola Shift**. Bawaannya Pagi 07:00–15:00, Sore
+15:00–23:00, dan Malam 23:00–07:00; semuanya bisa diubah, ditambah, atau
+dihapus. Jam selesai lebih awal dari jam mulai berarti shift lewat tengah malam.
+
 ## Keterlambatan dan denda
 
-Telat dihitung otomatis saat karyawan absen masuk:
+Telat dihitung otomatis saat karyawan absen masuk, memakai jam shift yang
+dijadwalkan pada tanggal itu:
 
 ```
-telat = jam absen masuk − (jam masuk jadwal + toleransi)     // minimum 0
+telat = jam absen masuk − (jam mulai shift + toleransi)     // minimum 0
 ```
 
 Toleransi diambil dari pengaturan karyawan bila diisi, kalau kosong ikut
@@ -64,10 +85,12 @@ Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
 2. Menu Chrome → **Tambahkan ke layar Utama**, agar terbuka layar penuh.
 3. Izinkan akses kamera saat diminta.
 4. Buka tab **Admin** (PIN bawaan `1234`), lalu:
-   - ganti PIN di **Pengaturan**,
-   - tambahkan karyawan beserta jadwalnya di **Karyawan**,
-   - daftarkan wajah tiap karyawan (3 foto),
-   - pakai **Uji Wajah** untuk menyetel ambang kecocokan sesuai pencahayaan cafe.
+   - ganti PIN di **Setelan**,
+   - tambahkan karyawan di **Orang**, dan daftarkan wajah tiap orang (3 foto),
+   - sesuaikan pola shift lewat **Jadwal → Kelola Shift**,
+   - susun roster minggu ini di **Jadwal**,
+   - pakai **Orang → Uji Wajah** untuk menyetel ambang kecocokan sesuai
+     pencahayaan cafe.
 
 Letakkan HP di dudukan permanen. Bila HP dipindah atau lampu diganti, daftarkan
 ulang wajah karyawan.

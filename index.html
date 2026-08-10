@@ -117,6 +117,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .c-selesai{background:var(--accent-soft);color:var(--accent-ink)}
 .c-telat{background:var(--late-soft);color:var(--late)}
 .c-ot{background:var(--ot-soft);color:var(--ot)}
+.c-shift{background:var(--accent-soft);color:var(--accent-ink)}
+.c-shift::before{display:none}
 .c-kerja::before{animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -162,15 +164,52 @@ input[type=text],input[type=time],input[type=number],input[type=month],input[typ
 input[type=time],input[type=number],input[type=month],input[type=date]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 textarea{resize:vertical;min-height:64px;font-size:14px}
 input[type=range]{width:100%;accent-color:var(--accent)}
-.days{display:flex;gap:5px;flex-wrap:wrap}
-.day{flex:1;min-width:38px;text-align:center;padding:8px 2px;border:1px solid var(--line);border-radius:9px;
-  background:var(--bg2);font-family:var(--f-mono);font-size:11px;font-weight:600;cursor:pointer;letter-spacing:.04em}
-.day[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0}
 .sw{width:46px;height:27px;border-radius:999px;background:var(--line2);border:0;position:relative;cursor:pointer;flex:none;transition:background .15s}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:transform .15s}
 .sw[aria-pressed="true"]{background:var(--ok)}
 .sw[aria-pressed="true"]::after{transform:translateX(19px)}
+
+/* ---- jadwal / roster ---- */
+.wknav{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.wklbl{flex:1;text-align:center;line-height:1.25}
+.wklbl b{display:block;font-size:14.5px;font-weight:700}
+.wklbl span{font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+.wknav .btn{flex:0 0 42px;font-size:20px;line-height:1;padding:8px 0}
+
+table.roster th,table.roster td{padding:0;text-align:center}
+table.roster th:first-child,table.roster td:first-child{text-align:left;padding:8px 10px;min-width:104px}
+table.roster td:first-child{cursor:pointer;font-size:13px;font-weight:600;line-height:1.2}
+.rowhint{display:block;font-family:var(--f-mono);font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:600;margin-top:2px}
+.dayhead{cursor:pointer;padding:6px 4px!important;min-width:42px;line-height:1.25}
+.dayhead span{font-size:12px;color:var(--muted);font-weight:700}
+.dayhead.kini{color:var(--accent);background:var(--accent-soft)}
+.dayhead.kini span{color:var(--accent-ink)}
+td.cell{cursor:pointer;font-family:var(--f-mono);font-weight:700;font-size:14px;
+  padding:11px 4px!important;min-width:42px;border-left:1px solid var(--line)}
+td.cell.ada{background:var(--accent-soft);color:var(--accent-ink)}
+td.cell.off{background:var(--off-soft);color:var(--off)}
+td.cell.kosong{color:var(--line2)}
+td.cell.kini{box-shadow:inset 0 0 0 1.5px var(--accent)}
+td.cell:active{filter:brightness(.93)}
+
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:11px;font-size:11.5px;color:var(--muted);align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg{display:grid;place-items:center;width:24px;height:24px;border-radius:7px;flex:none;
+  font-family:var(--f-mono);font-size:11px;font-weight:700}
+.lg.ada{background:var(--accent-soft);color:var(--accent-ink)}
+.lg.off{background:var(--off-soft);color:var(--off)}
+.lg.kosong{background:var(--bg2);color:var(--line2);border:1px solid var(--line)}
+
+.shlist{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden}
+.shopt{display:flex;align-items:center;gap:11px;padding:12px;background:var(--surface);border:0;
+  text-align:left;cursor:pointer;width:100%;color:inherit}
+.shopt:active{background:var(--bg2)}
+.shopt .grow{display:flex;flex-direction:column;gap:2px}
+.shn{font-weight:600;font-size:14.5px}
+.shr{font-size:11.5px;color:var(--muted)}
 
 /* ---- tingkatan denda ---- */
 .tiers{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
@@ -342,7 +381,14 @@ const DEFAULTS = {
              faceMode:"warn", faceThreshold:65, retention:60,
              fineEnabled:true,
              fineTiers:[ {upTo:15, amount:5000}, {upTo:30, amount:15000}, {upTo:null, amount:30000} ] },
-  employees:[], records:[]
+  shifts:[
+    { id:"sh-pagi",  code:"P", name:"Pagi",  start:"07:00", end:"15:00" },
+    { id:"sh-sore",  code:"S", name:"Sore",  start:"15:00", end:"23:00" },
+    { id:"sh-malam", code:"M", name:"Malam", start:"23:00", end:"07:00" }
+  ],
+  employees:[],
+  roster:{},        /* { "2026-08-11": { "<idKaryawan>": "<idShift>" | "off" } } */
+  records:[]
 };
 let db = JSON.parse(JSON.stringify(DEFAULTS));
 
@@ -350,11 +396,69 @@ function loadDB(){
   try{
     const raw = localStorage.getItem(LS);
     if(raw){ const p = JSON.parse(raw);
-      db.settings = Object.assign({}, DEFAULTS.settings, p.settings||{});
+      db.settings  = Object.assign({}, DEFAULTS.settings, p.settings||{});
       db.employees = Array.isArray(p.employees) ? p.employees : [];
-      db.records  = Array.isArray(p.records)  ? p.records  : [];
+      db.records   = Array.isArray(p.records)  ? p.records  : [];
+      db.shifts    = Array.isArray(p.shifts) && p.shifts.length ? p.shifts : [];
+      db.roster    = (p.roster && typeof p.roster === "object") ? p.roster : {};
+      migrateToRoster(!p.shifts);
     }
   }catch(e){ storageOK = false; }
+}
+
+/* Versi awal menyimpan jadwal tetap di tiap karyawan (jamMasuk/jamPulang/days).
+   Sekarang jadwal ditentukan per tanggal lewat roster, jadi jadwal lama diubah
+   menjadi daftar shift dan ditulis ke roster agar catatan lama tetap benar. */
+function migrateToRoster(perluMigrasi){
+  if(!db.shifts.length) db.shifts = JSON.parse(JSON.stringify(DEFAULTS.shifts));
+  bersihkanRoster();
+  if(!perluMigrasi) return;
+
+  const namaDari = h => { const m = parseHM(h);
+    return m < 11*60 ? "Pagi" : m < 15*60 ? "Siang" : m < 19*60 ? "Sore" : "Malam"; };
+  const kodeUnik = nama => {
+    let c = nama[0].toUpperCase(), n = 2;
+    while(db.shifts.some(s => s.code === c)) c = nama[0].toUpperCase() + (n++);
+    return c;
+  };
+  const lama = db.employees.filter(e => e.jamMasuk && e.jamPulang);
+  if(!lama.length) return;
+
+  db.shifts = [];
+  const petaShift = new Map();
+  for(const e of lama){
+    const kunci = e.jamMasuk + "-" + e.jamPulang;
+    if(!petaShift.has(kunci)){
+      const nama = namaDari(e.jamMasuk);
+      const sh = { id:uid(), code:kodeUnik(nama), name:nama, start:e.jamMasuk, end:e.jamPulang };
+      db.shifts.push(sh);
+      petaShift.set(kunci, sh.id);
+    }
+  }
+
+  // isi roster dari pola hari kerja lama, mencakup semua tanggal yang sudah ada
+  // catatan absennya sampai akhir bulan berjalan
+  const tanggalCatatan = db.records.map(r => r.date).sort();
+  const now = new Date();
+  const awalBulan = dkey(new Date(now.getFullYear(), now.getMonth(), 1));
+  const akhirBulan = dkey(new Date(now.getFullYear(), now.getMonth()+1, 0));
+  const dari = tanggalCatatan.length && tanggalCatatan[0] < awalBulan ? tanggalCatatan[0] : awalBulan;
+  const sampai = tanggalCatatan.length && tanggalCatatan[tanggalCatatan.length-1] > akhirBulan
+    ? tanggalCatatan[tanggalCatatan.length-1] : akhirBulan;
+
+  const [fy,fm,fd] = dari.split("-").map(Number);
+  const [ty,tm,td] = sampai.split("-").map(Number);
+  const akhir = new Date(ty, tm-1, td);
+  for(let d = new Date(fy, fm-1, fd); d <= akhir; d.setDate(d.getDate()+1)){
+    const k = dkey(d), hari = d.getDay();
+    for(const e of lama){
+      const sid = petaShift.get(e.jamMasuk + "-" + e.jamPulang);
+      const kerja = Array.isArray(e.days) ? !!e.days[hari] : true;
+      if(!db.roster[k]) db.roster[k] = {};
+      if(db.roster[k][e.id] === undefined) db.roster[k][e.id] = kerja ? sid : "off";
+    }
+  }
+  save();
 }
 let saveT = null;
 function save(){
@@ -423,25 +527,75 @@ function tierLabel(i){
   if(t.upTo === null || t.upTo === undefined || t.upTo === "") return `Lebih dari ${from-1} menit`;
   return `${from}–${t.upTo} menit`;
 }
+/* ---------- roster: jadwal shift per tanggal ---------- */
+function shiftById(id){ return (db.shifts || []).find(s => s.id === id) || null; }
+/* Buang entri yang menunjuk shift atau karyawan yang sudah tidak ada, agar
+   jumlah sel terisi selalu cocok dengan yang tampil di grid. */
+function bersihkanRoster(){
+  if(!db.roster) { db.roster = {}; return; }
+  for(const k of Object.keys(db.roster)){
+    for(const empId of Object.keys(db.roster[k])){
+      const v = db.roster[k][empId];
+      const adaOrang = db.employees.some(e => e.id === empId);
+      if(!adaOrang || (v !== "off" && !shiftById(v))) delete db.roster[k][empId];
+    }
+    if(!Object.keys(db.roster[k]).length) delete db.roster[k];
+  }
+}
+function shiftSpan(sh){ const n = (parseHM(sh.end) - parseHM(sh.start) + 1440) % 1440; return n || 1440; }
+function shiftRange(sh){ return `${sh.start}–${sh.end}`; }
+
+/* Tiga keadaan berbeda: ada shift, libur (ditandai admin), atau belum dijadwalkan. */
+function rosterRaw(dateKey, empId){
+  const hari = db.roster && db.roster[dateKey];
+  return hari ? hari[empId] : undefined;
+}
+function shiftOn(emp, dateKey){
+  const v = rosterRaw(dateKey, emp.id);
+  return (!v || v === "off") ? null : shiftById(v);
+}
+function isLibur(emp, dateKey){ return rosterRaw(dateKey, emp.id) === "off"; }
+function setRoster(dateKey, empId, value){
+  if(!db.roster) db.roster = {};
+  if(value === null){
+    if(db.roster[dateKey]){
+      delete db.roster[dateKey][empId];
+      if(!Object.keys(db.roster[dateKey]).length) delete db.roster[dateKey];
+    }
+  }else{
+    if(!db.roster[dateKey]) db.roster[dateKey] = {};
+    db.roster[dateKey][empId] = value;
+  }
+}
 function schedule(emp, dateKey){
+  const sh = shiftOn(emp, dateKey);
+  if(!sh) return null;
   const [y,m,d] = dateKey.split("-").map(Number);
   const start = new Date(y, m-1, d, 0, 0, 0, 0);
-  start.setMinutes(parseHM(emp.jamMasuk));
-  let span = (parseHM(emp.jamPulang) - parseHM(emp.jamMasuk) + 1440) % 1440;
-  if(span === 0) span = 1440;
-  return { start, end:new Date(start.getTime() + span*60000), span };
+  start.setMinutes(parseHM(sh.start));
+  const span = shiftSpan(sh);
+  return { start, end:new Date(start.getTime() + span*60000), span, shift:sh };
 }
 function recalc(rec){
   const emp = db.employees.find(e => e.id === rec.empId);
   if(!emp) return rec;
   const s = schedule(emp, rec.date);
+  rec.shiftId = s ? s.shift.id : null;
+  rec.workMin = rec.outAt ? Math.max(0, Math.round((rec.outAt - rec.inAt)/60000)) : 0;
+  if(!s){
+    // absen di hari yang tidak dijadwalkan: durasi tetap dihitung, telat dan
+    // lembur tidak, karena tidak ada jam acuan
+    rec.offSchedule = true;
+    rec.lateMin = 0; rec.earlyMin = 0; rec.otMin = 0;
+    return rec;
+  }
+  rec.offSchedule = false;
   rec.lateMin = rec.inAt ? Math.max(0, Math.round((rec.inAt - s.start.getTime())/60000) - tolOf(emp)) : 0;
   if(rec.outAt){
-    rec.workMin  = Math.max(0, Math.round((rec.outAt - rec.inAt)/60000));
     rec.earlyMin = Math.max(0, Math.round((s.end.getTime() - rec.outAt)/60000));
     const ot = Math.max(0, Math.round((rec.outAt - s.end.getTime())/60000));
     rec.otMin = ot >= Number(db.settings.minOvertime||0) ? ot : 0;
-  } else { rec.workMin = 0; rec.earlyMin = 0; rec.otMin = 0; }
+  } else { rec.earlyMin = 0; rec.otMin = 0; }
   return rec;
 }
 function recalcAll(){ db.records.forEach(recalc); }
@@ -461,10 +615,7 @@ function empState(emp){
   if(done) return { key:"selesai", rec:done };
   return { key:"belum", rec:null };
 }
-function worksOn(emp, dateKey){
-  const [y,m,d] = dateKey.split("-").map(Number);
-  return !!(emp.days && emp.days[new Date(y,m-1,d).getDay()]);
-}
+function worksOn(emp, dateKey){ return !!shiftOn(emp, dateKey); }
 
 /* ============================================================
    MESIN PENCOCOKAN WAJAH
@@ -919,7 +1070,7 @@ async function saveAbsen(){
    ============================================================ */
 let activeTab = "absen";
 let adminUnlocked = false;
-let adminSec = "rekap";
+let adminSec = "jadwal";
 let period = new Date().toISOString().slice(0,7);
 let filterQ = "";
 
@@ -990,7 +1141,9 @@ function viewAbsen(){
 function empCard(e, st){
   const chip = { belum:["c-belum","Belum absen"], kerja:["c-kerja","Sedang kerja"],
                  alert:["c-telat","Lupa absen pulang"], selesai:["c-selesai","Selesai"] }[st.key];
-  let sub = `${e.jamMasuk}–${e.jamPulang}`;
+  const k = dkey();
+  const sh = shiftOn(e, k);
+  let sub = sh ? `${sh.name} ${shiftRange(sh)}` : (isLibur(e,k) ? "Libur hari ini" : "Belum dijadwalkan");
   if(st.rec){
     sub = `Masuk ${hm(st.rec.inAt)}`;
     if(st.rec.outAt) sub += ` · Pulang ${hm(st.rec.outAt)}`;
@@ -1008,6 +1161,7 @@ function empCard(e, st){
     <div class="sch">${esc(sub)}</div>
     <div class="row" style="gap:5px;flex-wrap:wrap">
       <span class="chip ${chip[0]}">${chip[1]}</span>
+      ${sh && st.rec ? `<span class="chip c-shift">${esc(sh.code)}</span>` : ""}
       ${late ? `<span class="chip c-telat">+${st.rec.lateMin}m</span>` : ""}
       ${st.rec && st.rec.otMin > 0 ? `<span class="chip c-ot">L ${fmtJam(st.rec.otMin)}j</span>` : ""}
     </div>
@@ -1028,11 +1182,17 @@ function openEmpSheet(id){
     action = `<div class="note">Sudah absen masuk dan pulang hari ini. Untuk absen tambahan atau koreksi,
       gunakan Admin → Rekap.</div>`;
   }
-  const s = schedule(e, dkey());
+  const k = dkey();
+  const sh = shiftOn(e, k);
+  const jadwal = sh
+    ? `Shift ${esc(sh.name)} ${shiftRange(sh)} · toleransi ${tolOf(e)} menit`
+    : (isLibur(e,k) ? "<b>Libur hari ini</b>" : "<b>Belum dijadwalkan hari ini</b>");
   sheet(`
     <h3>${esc(e.name)}</h3>
-    <div class="sub">${esc(e.role || "Karyawan")} · Jadwal ${e.jamMasuk}–${e.jamPulang}
-      · toleransi ${tolOf(e)} menit${worksOn(e, dkey()) ? "" : " · <b>libur hari ini</b>"}</div>
+    <div class="sub">${esc(e.role || "Karyawan")} · ${jadwal}</div>
+    ${!sh ? `<div class="note" style="margin-bottom:14px">Karyawan ini tidak punya shift hari ini.
+      Absen tetap bisa dilakukan dan tercatat, tapi keterlambatan dan lembur tidak dihitung karena
+      tidak ada jam acuan. Atur shiftnya di Admin → Jadwal.</div>` : ""}
     ${st.stale ? `<div class="note warn" style="margin-bottom:14px">Absen masuk ${shortDate(st.rec.date)}
       pukul ${hm(st.rec.inAt)} belum ditutup. Absen pulang sekarang akan menutup catatan tersebut,
       atau perbaiki lewat Admin → Rekap.</div>` : ""}
@@ -1041,7 +1201,8 @@ function openEmpSheet(id){
     ${recs.length ? `<div class="list" style="margin-bottom:14px">${recs.map(r => `
       <div class="item" style="cursor:default">
         <div class="grow"><div class="t1">${r.outAt ? "Masuk & pulang" : "Masuk"}</div>
-          <div class="t2">${r.lateMin > 0 ? `Terlambat ${fmtDur(r.lateMin)}` : "Tepat waktu"}${
+          <div class="t2">${r.offSchedule ? "Di luar jadwal"
+            : (r.lateMin > 0 ? `Terlambat ${fmtDur(r.lateMin)}` : "Tepat waktu")}${
             r.lateMin > 0 && fineFor(r.lateMin) ? ` · denda ${rupiah(fineFor(r.lateMin))}` : ""}${
             r.outAt ? ` · Kerja ${fmtDur(r.workMin)}` : ""}${r.otMin > 0 ? ` · Lembur ${fmtDur(r.otMin)}` : ""}</div></div>
         <div class="tm">${hm(r.inAt)}${r.outAt ? " → " + hm(r.outAt) : " → —"}</div>
@@ -1063,12 +1224,228 @@ function viewAdmin(){
   }
   return `
   <div class="seg">
-    ${[["rekap","Rekap"],["karyawan","Karyawan"],["setelan","Pengaturan"]].map(([k,l]) =>
+    ${[["jadwal","Jadwal"],["rekap","Rekap"],["karyawan","Orang"],["setelan","Setelan"]].map(([k,l]) =>
       `<button data-act="sec" data-sec="${k}" aria-current="${adminSec===k}">${l}</button>`).join("")}
   </div>
-  ${adminSec === "rekap" ? secRekap() : adminSec === "karyawan" ? secKaryawan() : secSetelan()}
+  ${adminSec === "jadwal" ? secJadwal()
+    : adminSec === "rekap" ? secRekap()
+    : adminSec === "karyawan" ? secKaryawan() : secSetelan()}
   <div style="height:16px"></div>
   <button class="btn ghost blk" data-act="lock">Kunci Area Admin</button>`;
+}
+
+/* ============================================================
+   JADWAL — roster mingguan, satu shift per karyawan per tanggal
+   ============================================================ */
+let weekStart = mondayOf(new Date());
+
+function mondayOf(d){
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const shift = (x.getDay() + 6) % 7;          // Senin = awal minggu
+  x.setDate(x.getDate() - shift);
+  return x;
+}
+function weekDates(start){
+  return Array.from({length:7}, (_,i) => {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    return dkey(d);
+  });
+}
+function weekLabel(start){
+  const ds = weekDates(start);
+  const [ay,am,ad] = ds[0].split("-").map(Number);
+  const [by,bm,bd] = ds[6].split("-").map(Number);
+  if(am === bm) return `${ad}–${bd} ${MONTHS[am-1]} ${ay}`;
+  if(ay === by) return `${ad} ${MONTHS[am-1]} – ${bd} ${MONTHS[bm-1]} ${ay}`;
+  return `${ad} ${MONTHS[am-1]} ${ay} – ${bd} ${MONTHS[bm-1]} ${by}`;
+}
+function secJadwal(){
+  const emps = db.employees.filter(e => e.active !== false);
+  const ds = weekDates(weekStart);
+  const today = dkey();
+  // hanya hitung yang benar-benar tampil terisi: shift yang masih ada, atau libur
+  const terisi = ds.reduce((a,k) => a + emps.filter(e => {
+    const v = rosterRaw(k, e.id);
+    return v === "off" || (!!v && !!shiftById(v));
+  }).length, 0);
+  const total = ds.length * emps.length;
+
+  if(!emps.length){
+    return `<div class="card"><div class="empty">
+      <div class="big">Belum ada karyawan</div>
+      Tambahkan karyawan lebih dulu di tab <b>Orang</b>, baru jadwal shiftnya bisa disusun di sini.
+    </div></div>`;
+  }
+  return `
+  <div class="wknav">
+    <button class="btn sm ghost" data-act="week" data-d="-1" aria-label="Minggu sebelumnya">‹</button>
+    <div class="wklbl"><b>${esc(weekLabel(weekStart))}</b>
+      <span>${terisi} dari ${total} sel terisi</span></div>
+    <button class="btn sm ghost" data-act="week" data-d="1" aria-label="Minggu berikutnya">›</button>
+  </div>
+  <div class="btnrow" style="margin-bottom:12px">
+    <button class="btn sm" data-act="week" data-d="0">Minggu Ini</button>
+    <button class="btn sm" data-act="copyweek">Salin Minggu Lalu</button>
+  </div>
+
+  <div class="twrap"><table class="roster">
+    <thead><tr><th>Karyawan</th>${ds.map(k => {
+      const [,,dd] = k.split("-");
+      const [y,m,d] = k.split("-").map(Number);
+      return `<th class="dayhead ${k === today ? "kini" : ""}" data-act="fillday" data-k="${k}"
+        title="Atur semua karyawan pada hari ini">${DAYS[new Date(y,m-1,d).getDay()]}<br><span>${dd}</span></th>`;
+    }).join("")}</tr></thead>
+    <tbody>${emps.map(e => `
+      <tr>
+        <td data-act="fillrow" data-id="${e.id}" title="Atur satu shift untuk seminggu">
+          ${esc(e.name)}<span class="rowhint">seminggu</span></td>
+        ${ds.map(k => {
+          const v = rosterRaw(k, e.id);
+          const sh = (v && v !== "off") ? shiftById(v) : null;
+          const cls = sh ? "ada" : v === "off" ? "off" : "kosong";
+          const teks = sh ? esc(sh.code) : v === "off" ? "L" : "–";
+          return `<td class="cell ${cls} ${k === today ? "kini" : ""}"
+            data-act="cell" data-k="${k}" data-id="${e.id}"
+            aria-label="${esc(e.name)} ${shortDate(k)}: ${sh ? esc(sh.name) : v === "off" ? "libur" : "belum dijadwalkan"}"
+            >${teks}</td>`;
+        }).join("")}
+      </tr>`).join("")}</tbody>
+  </table></div>
+
+  <div class="legend">
+    ${db.shifts.map(s => `<span><b class="lg ada">${esc(s.code)}</b> ${esc(s.name)} ${shiftRange(s)}</span>`).join("")}
+    <span><b class="lg off">L</b> Libur</span>
+    <span><b class="lg kosong">–</b> Belum dijadwalkan</span>
+  </div>
+
+  <div class="sect"><h2>Shift</h2><span class="lbl">${db.shifts.length} shift</span></div>
+  <button class="btn blk" data-act="managesh">Kelola Shift</button>
+  <div class="hint" style="margin-top:8px">Ketuk sel untuk mengubah satu hari, ketuk nama karyawan untuk
+    mengisi seminggu sekaligus, atau ketuk kepala kolom hari untuk mengatur semua karyawan pada hari itu.</div>`;
+}
+
+function pickShiftSheet(judul, sub, onPickAttr){
+  return `
+    <h3>${judul}</h3>
+    <div class="sub">${sub}</div>
+    <div class="shlist">
+      ${db.shifts.map(s => `<button class="shopt" ${onPickAttr} data-v="${s.id}">
+        <b class="lg ada">${esc(s.code)}</b>
+        <span class="grow"><span class="shn">${esc(s.name)}</span>
+          <span class="shr mono">${shiftRange(s)} · ${fmtDur(shiftSpan(s))}</span></span>
+      </button>`).join("")}
+      <button class="shopt" ${onPickAttr} data-v="off">
+        <b class="lg off">L</b><span class="grow"><span class="shn">Libur</span>
+        <span class="shr">Hari libur resmi, tidak dihitung alpa</span></span></button>
+      <button class="shopt" ${onPickAttr} data-v="clear">
+        <b class="lg kosong">–</b><span class="grow"><span class="shn">Kosongkan</span>
+        <span class="shr">Belum dijadwalkan</span></span></button>
+    </div>
+    <div style="height:12px"></div>
+    <button class="btn ghost blk" data-act="scrim">Batal</button>`;
+}
+function openCellSheet(dateKey, empId){
+  const e = db.employees.find(x => x.id === empId); if(!e) return;
+  sheet(pickShiftSheet(esc(e.name), longDate(dateKey),
+    `data-act="setcell" data-k="${dateKey}" data-id="${empId}"`));
+}
+function openFillRow(empId){
+  const e = db.employees.find(x => x.id === empId); if(!e) return;
+  sheet(pickShiftSheet(esc(e.name), `Terapkan ke seluruh ${esc(weekLabel(weekStart))}`,
+    `data-act="setrow" data-id="${empId}"`));
+}
+function openFillDay(dateKey){
+  sheet(pickShiftSheet(longDate(dateKey), "Terapkan ke semua karyawan aktif",
+    `data-act="setday" data-k="${dateKey}"`));
+}
+function applyRoster(dateKey, empId, v){
+  setRoster(dateKey, empId, v === "clear" ? null : v);
+}
+function copyLastWeek(){
+  const ds = weekDates(weekStart);
+  const prev = weekDates(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - 7));
+  const emps = db.employees.filter(e => e.active !== false);
+  let n = 0;
+  ds.forEach((k,i) => {
+    for(const e of emps){
+      const v = rosterRaw(prev[i], e.id);
+      if(v !== undefined){ setRoster(k, e.id, v); n++; }
+    }
+  });
+  save(); render();
+  toast(n ? `${n} jadwal disalin dari minggu lalu` : "Minggu lalu belum ada jadwal untuk disalin");
+}
+
+/* ---- kelola shift ---- */
+function openShiftManager(){
+  sheet(`
+    <h3>Kelola Shift</h3>
+    <div class="sub">Pola jam kerja yang bisa dipakai di jadwal</div>
+    ${db.shifts.length ? `<div class="list" style="margin-bottom:12px">${db.shifts.map(s => {
+      const dipakai = countShiftUse(s.id);
+      return `<button class="item" data-act="editsh" data-id="${s.id}">
+        <b class="lg ada">${esc(s.code)}</b>
+        <div class="grow"><div class="t1">${esc(s.name)}</div>
+          <div class="t2 mono">${shiftRange(s)} · ${fmtDur(shiftSpan(s))}${
+            parseHM(s.end) <= parseHM(s.start) ? " · lewat tengah malam" : ""}</div></div>
+        <div class="tm">${dipakai}×</div>
+      </button>`;
+    }).join("")}</div>` : `<div class="empty">Belum ada shift.</div>`}
+    <button class="btn pri blk" data-act="editsh" data-id="">+ Tambah Shift</button>
+    <div style="height:8px"></div>
+    <button class="btn ghost blk" data-act="scrim">Tutup</button>`);
+}
+function countShiftUse(id){
+  let n = 0;
+  for(const k of Object.keys(db.roster || {}))
+    for(const empId of Object.keys(db.roster[k])) if(db.roster[k][empId] === id) n++;
+  return n;
+}
+function openShiftForm(id){
+  const s = id ? shiftById(id) : null;
+  sheet(`
+    <h3>${s ? "Ubah Shift" : "Shift Baru"}</h3>
+    <div class="sub">${s ? `Dipakai di ${countShiftUse(s.id)} sel jadwal` : "mis. Pagi, Sore, Malam, Middle"}</div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:0 0 84px"><label for="shc">Kode</label>
+        <input type="text" id="shc" maxlength="3" value="${esc(s ? s.code : "")}" placeholder="P" autocomplete="off"></div>
+      <div class="field grow"><label for="shn">Nama shift</label>
+        <input type="text" id="shn" value="${esc(s ? s.name : "")}" placeholder="Pagi" autocomplete="off"></div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field grow"><label for="shs">Jam mulai</label>
+        <input type="time" id="shs" value="${s ? s.start : "07:00"}"></div>
+      <div class="field grow"><label for="she">Jam selesai</label>
+        <input type="time" id="she" value="${s ? s.end : "15:00"}"></div>
+    </div>
+    <div class="field"><span class="hint">Jam selesai lebih awal dari jam mulai berarti shift lewat
+      tengah malam, misal 23:00–07:00.</span></div>
+    ${s ? `<div class="btnrow" style="margin-bottom:12px">
+      <button class="btn dgr blk" data-act="delsh" data-id="${s.id}">Hapus Shift</button></div>` : ""}
+    <div class="btnrow"><button class="btn ghost" data-act="managesh">Kembali</button>
+      <button class="btn pri" data-act="savesh" data-id="${s ? s.id : ""}">Simpan</button></div>`);
+}
+function saveShift(id){
+  const code = el("shc").value.trim().toUpperCase();
+  const name = el("shn").value.trim();
+  const start = el("shs").value, end = el("she").value;
+  if(!name){ toast("Nama shift wajib diisi"); return; }
+  if(!code){ toast("Kode shift wajib diisi"); return; }
+  if(!start || !end){ toast("Jam mulai dan selesai wajib diisi"); return; }
+  if(db.shifts.some(s => s.code === code && s.id !== id)){ toast(`Kode "${code}" sudah dipakai shift lain`); return; }
+  if(id){ Object.assign(shiftById(id), { code, name, start, end }); }
+  else { db.shifts.push({ id:uid(), code, name, start, end }); }
+  recalcAll(); save(); openShiftManager(); render(); toast(id ? "Shift diperbarui" : `Shift ${name} ditambahkan`);
+}
+function delShift(id){
+  const s = shiftById(id); if(!s) return;
+  const n = countShiftUse(id);
+  if(!confirm(n ? `Hapus shift ${s.name}? ${n} sel jadwal yang memakainya akan ikut dikosongkan.`
+                : `Hapus shift ${s.name}?`)) return;
+  for(const k of Object.keys(db.roster || {}))
+    for(const empId of Object.keys(db.roster[k])) if(db.roster[k][empId] === id) setRoster(k, empId, null);
+  db.shifts = db.shifts.filter(x => x.id !== id);
+  recalcAll(); save(); openShiftManager(); render(); toast(`Shift ${s.name} dihapus`);
 }
 
 /* ---- rekap ---- */
@@ -1085,16 +1462,17 @@ function summarize(){
     const rs = db.records.filter(r => r.empId === e.id && r.date >= from && r.date <= to);
     const hadirDays = new Set(rs.map(r => r.date));
     let sched = 0;
+    const belumHadir = [];
     const [fy,fm,fd] = from.split("-").map(Number);
     const [ty,tm,td] = to.split("-").map(Number);
     for(let d = new Date(fy,fm-1,fd); d <= new Date(ty,tm-1,td); d.setDate(d.getDate()+1)){
       const k = dkey(d);
       if(k > today) break;
-      if(worksOn(e,k)) sched++;
+      if(worksOn(e,k)){ sched++; if(!hadirDays.has(k)) belumHadir.push(k); }
     }
     const lateCnt = rs.filter(r => r.lateMin > 0).length;
     const sum = (f) => rs.reduce((a,r) => a + (r[f]||0), 0);
-    const alpa = Math.max(0, sched - [...hadirDays].filter(k => k <= today && worksOn(e,k)).length);
+    const alpa = belumHadir.length;   // hari berjadwal yang sudah lewat tanpa catatan absen
     const fine = rs.reduce((a,r) => a + fineFor(r.lateMin), 0);
     return { e, recs:rs, hadir:hadirDays.size, sched, alpa, lateCnt, fine,
              lateMin:sum("lateMin"), workMin:sum("workMin"), otMin:sum("otMin"), earlyMin:sum("earlyMin") };
@@ -1162,6 +1540,7 @@ function openEmpDetail(id){
       if(r.lateMin > 0) bits.push(`<span style="color:var(--late)">telat ${fmtDur(r.lateMin)}${
         fineFor(r.lateMin) ? ` · ${rupiah(fineFor(r.lateMin))}` : ""}</span>`);
       if(r.otMin > 0) bits.push(`<span style="color:var(--ot)">lembur ${fmtDur(r.otMin)}</span>`);
+      if(r.offSchedule) bits.push(`<b>di luar jadwal</b>`);
       if(r.earlyMin > 0) bits.push(`pulang cepat ${fmtDur(r.earlyMin)}`);
       if(!r.outAt) bits.push(`<b>belum absen pulang</b>`);
       if(r.inFlag || r.outFlag) bits.push(`<span style="color:var(--late)">wajah perlu dicek</span>`);
@@ -1181,7 +1560,9 @@ function openRecEdit(rid){
   const e = db.employees.find(x => x.id === r.empId);
   sheet(`
     <h3>Koreksi Absen</h3>
-    <div class="sub">${esc(e ? e.name : "?")} · ${longDate(r.date)}</div>
+    <div class="sub">${esc(e ? e.name : "?")} · ${longDate(r.date)}${(() => {
+      const sh = e ? shiftOn(e, r.date) : null;
+      return sh ? ` · shift ${esc(sh.name)} ${shiftRange(sh)}` : " · <b>di luar jadwal</b>"; })()}</div>
     <div class="field"><label for="ed">Tanggal</label><input type="date" id="ed" value="${r.date}"></div>
     <div class="row" style="gap:10px">
       <div class="field grow"><label for="ei">Jam masuk</label><input type="time" id="ei" value="${hm(r.inAt)}"></div>
@@ -1275,8 +1656,9 @@ function secKaryawan(){
                  : `<div class="ava">${esc(initials(e.name))}</div>`}
       <div class="grow">
         <div class="t1">${esc(e.name)}${e.active === false ? ' <span class="chip c-belum">Nonaktif</span>' : ""}</div>
-        <div class="t2">${esc(e.role || "Karyawan")} · ${e.jamMasuk}–${e.jamPulang} ·
-          ${e.days.map((v,i) => v ? DAYS[i] : null).filter(Boolean).join(" ") || "tanpa hari kerja"}</div>
+        <div class="t2">${esc(e.role || "Karyawan")} · toleransi ${tolOf(e)} menit ·
+          ${(() => { const sh = shiftOn(e, dkey());
+             return sh ? `hari ini ${esc(sh.name)}` : (isLibur(e, dkey()) ? "hari ini libur" : "hari ini belum dijadwalkan"); })()}</div>
       </div>
       <span class="chip ${n ? "c-kerja" : "c-belum"}">${n ? n + " foto" : "belum"}</span>
     </button>`;
@@ -1284,23 +1666,14 @@ function secKaryawan(){
 }
 function openEmpForm(id){
   const e = id ? db.employees.find(x => x.id === id) : null;
-  const days = e ? e.days.slice() : [false,true,true,true,true,true,true];
   const n = e && e.templates ? e.templates.length : 0;
   sheet(`
     <h3>${e ? "Ubah Karyawan" : "Karyawan Baru"}</h3>
-    <div class="sub">${e ? esc(e.name) : "Isi data dan jadwal kerja"}</div>
+    <div class="sub">${e ? esc(e.name) : "Jadwal shiftnya diatur terpisah di Admin → Jadwal"}</div>
     <div class="field"><label for="fn">Nama</label>
       <input type="text" id="fn" value="${esc(e ? e.name : "")}" placeholder="mis. Rani Puspita" autocomplete="off"></div>
     <div class="field"><label for="fr">Posisi</label>
       <input type="text" id="fr" value="${esc(e ? e.role || "" : "")}" placeholder="mis. Barista" autocomplete="off"></div>
-    <div class="row" style="gap:10px">
-      <div class="field grow"><label for="fi">Jam masuk</label><input type="time" id="fi" value="${e ? e.jamMasuk : "08:00"}"></div>
-      <div class="field grow"><label for="fo">Jam pulang</label><input type="time" id="fo" value="${e ? e.jamPulang : "17:00"}"></div>
-    </div>
-    <div class="field"><label>Hari kerja</label>
-      <div class="days" id="fd">${DAYS.map((d,i) =>
-        `<button type="button" class="day" data-act="day" data-i="${i}" aria-pressed="${!!days[i]}">${d}</button>`).join("")}</div>
-    </div>
     <div class="field"><label for="ft">Toleransi telat (menit)</label>
       <input type="number" id="ft" min="0" max="120" value="${e && e.tolerance !== null && e.tolerance !== undefined ? e.tolerance : ""}"
         placeholder="ikut pengaturan umum (${db.settings.tolerance})">
@@ -1320,17 +1693,15 @@ function openEmpForm(id){
     <div class="btnrow"><button class="btn ghost" data-act="scrim">Batal</button>
       <button class="btn pri" data-act="saveemp" data-id="${e ? e.id : ""}">Simpan</button></div>
     ${e ? "" : `<div style="height:10px"></div><div class="hint">Simpan dulu, lalu buka kembali untuk mendaftarkan wajah.</div>`}`);
-  formDays = days;
   formActive = e ? e.active !== false : true;
 }
-let formDays = [], formActive = true;
+let formActive = true;
 function saveEmp(id){
   const name = el("fn").value.trim();
   if(!name){ toast("Nama karyawan wajib diisi"); return; }
   const tolRaw = el("ft").value.trim();
   const data = {
-    name, role: el("fr").value.trim(), jamMasuk: el("fi").value || "08:00",
-    jamPulang: el("fo").value || "17:00", days: formDays.slice(),
+    name, role: el("fr").value.trim(),
     tolerance: tolRaw === "" ? null : Math.max(0, Number(tolRaw)), active: formActive
   };
   if(id){
@@ -1350,6 +1721,7 @@ async function delEmp(id){
   }
   db.records = db.records.filter(r => r.empId !== id);
   db.employees = db.employees.filter(x => x.id !== id);
+  for(const k of Object.keys(db.roster || {})) setRoster(k, id, null);
   save(); closeSheet(); render(); toast(`${e.name} dihapus`);
 }
 
@@ -1497,6 +1869,9 @@ function restoreFile(file){
       db.settings  = Object.assign({}, DEFAULTS.settings, d.settings || {});
       db.employees = d.employees;
       db.records   = d.records;
+      db.shifts    = Array.isArray(d.shifts) && d.shifts.length ? d.shifts : [];
+      db.roster    = (d.roster && typeof d.roster === "object") ? d.roster : {};
+      migrateToRoster(!d.shifts);          // cadangan versi lama ikut dikonversi
       recalcAll(); save(); render(); toast("Cadangan berhasil dipulihkan");
     }catch(e){ toast("File cadangan tidak dikenali"); }
   };
@@ -1524,7 +1899,7 @@ function buildCSV(kind){
   const rows = [];
   const withFine = !!db.settings.fineEnabled;
   if(kind === "detail"){
-    rows.push(["Tanggal","Hari","Nama","Posisi","Jadwal Masuk","Jadwal Pulang","Jam Masuk","Jam Pulang",
+    rows.push(["Tanggal","Hari","Nama","Posisi","Shift","Jadwal Masuk","Jadwal Pulang","Jam Masuk","Jam Pulang",
       "Terlambat (menit)", ...(withFine ? ["Denda (Rp)"] : []),
       "Pulang Cepat (menit)","Lembur (menit)","Durasi Kerja (menit)","Durasi Kerja (jam)",
       "Cocok Wajah Masuk (%)","Cocok Wajah Pulang (%)","Status","Catatan"]);
@@ -1533,31 +1908,34 @@ function buildCSV(kind){
     for(const r of recs){
       const e = db.employees.find(x => x.id === r.empId); if(!e) continue;
       const [y,m,d] = r.date.split("-").map(Number);
+      const sh = shiftOn(e, r.date);
       const flags = [];
+      if(!sh) flags.push("Di luar jadwal");
       if(r.lateMin > 0) flags.push("Terlambat");
       if(!r.outAt) flags.push("Belum absen pulang");
       if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
       if(r.edited) flags.push("Diedit admin");
-      rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "", e.jamMasuk, e.jamPulang,
+      rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "",
+        sh ? sh.name : "", sh ? sh.start : "", sh ? sh.end : "",
         hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0, ...(withFine ? [fineFor(r.lateMin)] : []),
         r.earlyMin || 0, r.otMin || 0,
         r.workMin || 0, fmtJam(r.workMin), r.inScore == null ? "" : r.inScore,
         r.outScore == null ? "" : r.outScore, flags.join(", ") || "Normal", r.note || ""]);
     }
   }else{
-    rows.push(["Nama","Posisi","Jadwal","Hari Kerja Terjadwal","Hadir","Alpa","Jumlah Telat",
+    rows.push(["Nama","Posisi","Hari Kerja Terjadwal","Hadir","Alpa","Jumlah Telat",
       "Total Telat (menit)", ...(withFine ? ["Total Denda (Rp)"] : []),
       "Total Kerja (menit)","Total Kerja (jam)","Total Lembur (menit)","Total Lembur (jam)"]);
     const all = summarize();
     for(const r of all){
-      rows.push([r.e.name, r.e.role || "", `${r.e.jamMasuk}-${r.e.jamPulang}`, r.sched, r.hadir, r.alpa,
+      rows.push([r.e.name, r.e.role || "", r.sched, r.hadir, r.alpa,
         r.lateCnt, r.lateMin, ...(withFine ? [r.fine] : []),
         r.workMin, fmtJam(r.workMin), r.otMin, fmtJam(r.otMin)]);
     }
     if(all.length){
       const tot = f => all.reduce((a,r) => a + r[f], 0);
       rows.push([]);
-      rows.push(["TOTAL","","","","","", tot("lateCnt"), tot("lateMin"), ...(withFine ? [tot("fine")] : []),
+      rows.push(["TOTAL","","","","", tot("lateCnt"), tot("lateMin"), ...(withFine ? [tot("fine")] : []),
         tot("workMin"), fmtJam(tot("workMin")), tot("otMin"), fmtJam(tot("otMin"))]);
     }
   }
@@ -1645,6 +2023,41 @@ document.addEventListener("click", async (ev) => {
     case "lock": adminUnlocked = false; render(); toast("Area admin dikunci"); break;
     case "sec": adminSec = t.dataset.sec; render(); if(adminSec === "setelan") showUsage(); break;
     case "today": period = "today"; render(); break;
+
+    /* --- jadwal --- */
+    case "week": {
+      const d = Number(t.dataset.d);
+      weekStart = d === 0 ? mondayOf(new Date())
+        : new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + d*7);
+      render();
+      break;
+    }
+    case "copyweek": copyLastWeek(); break;
+    case "cell": openCellSheet(t.dataset.k, id); break;
+    case "fillrow": openFillRow(id); break;
+    case "fillday": openFillDay(t.dataset.k); break;
+    case "setcell":
+      applyRoster(t.dataset.k, id, t.dataset.v);
+      recalcAll(); save(); closeSheet(); render();
+      break;
+    case "setrow": {
+      weekDates(weekStart).forEach(k => applyRoster(k, id, t.dataset.v));
+      recalcAll(); save(); closeSheet(); render();
+      const e = db.employees.find(x => x.id === id);
+      toast(`Jadwal seminggu ${e ? e.name : ""} diperbarui`);
+      break;
+    }
+    case "setday": {
+      const k = t.dataset.k;
+      db.employees.filter(x => x.active !== false).forEach(x => applyRoster(k, x.id, t.dataset.v));
+      recalcAll(); save(); closeSheet(); render();
+      toast(`Jadwal ${shortDate(k)} diperbarui untuk semua karyawan`);
+      break;
+    }
+    case "managesh": openShiftManager(); break;
+    case "editsh": openShiftForm(id || null); break;
+    case "savesh": saveShift(id || null); break;
+    case "delsh": delShift(id); break;
     case "empdetail": openEmpDetail(id); break;
     case "editrec": openRecEdit(id); break;
     case "saverec": saveRecEdit(id); break;
@@ -1655,12 +2068,6 @@ document.addEventListener("click", async (ev) => {
     case "editemp": openEmpForm(id); break;
     case "saveemp": saveEmp(id); break;
     case "delemp": delEmp(id); break;
-    case "day": {
-      const i = Number(t.dataset.i);
-      formDays[i] = !formDays[i];
-      t.setAttribute("aria-pressed", String(!!formDays[i]));
-      break;
-    }
     case "togactive":
       formActive = !formActive;
       t.setAttribute("aria-pressed", String(formActive));
