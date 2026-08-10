@@ -17,6 +17,8 @@ Foto selfie selalu disimpan sebagai bukti.
   berbeda tiap hari; shift lintas tengah malam didukung
 - **Hitung otomatis** keterlambatan, pulang cepat, durasi kerja, dan lembur
 - **Denda keterlambatan bertingkat** yang tarif dan batas menitnya diatur sendiri
+- **Geotagging & geofencing** — koordinat tersimpan di tiap absen, dengan
+  pembatasan radius area cafe
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
 - **Ekspor CSV** detail dan rekap untuk perhitungan gaji
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
@@ -67,6 +69,32 @@ bukan disimpan di catatan absen, sehingga perubahan tarif langsung berlaku
 konsisten di seluruh rekap. Seluruh fitur denda bisa dimatikan lewat satu sakelar
 — saat mati, kolomnya hilang dari rekap maupun CSV.
 
+## Lokasi absen
+
+Setiap absen menyimpan koordinat GPS beserta akurasinya dan jarak ke titik cafe.
+Titik lokasi diatur di **Admin → Setelan → Lokasi absen**: berdiri di cafe lalu
+tekan **Pakai Lokasi Saat Ini**, atau isi lintang dan bujur secara manual.
+
+Tiga mode tersedia:
+
+| Mode | Perilaku |
+| --- | --- |
+| Wajib di area | Absen ditolak bila di luar radius atau GPS mati, kecuali disetujui admin lewat PIN |
+| Peringatan saja | Absen tetap tercatat, ditandai bila di luar radius |
+| Nonaktif | Tanpa pembatasan; koordinat tetap disimpan bila titik cafe sudah diisi |
+
+Saat kamera menyala, lokasi dicari berbarengan agar sudah dapat sinyal ketika
+foto diambil, dan statusnya tampil sebagai bilah di bawah kamera.
+
+**Menentukan radius.** GPS di dalam ruangan biasanya meleset 20–50 meter, kadang
+lebih. Radius di bawah 50 meter cenderung menolak karyawan yang sebenarnya sudah
+berada di cafe. Pakai **Uji Jarak** beberapa kali dari titik-titik berbeda di
+dalam cafe, ambil jarak terbesar yang muncul, lalu tambahkan margin akurasi.
+
+Koordinat, akurasi, dan jarak ikut terekspor ke CSV. Di rincian catatan absen,
+tiap titik bisa dibuka di Google Maps. Semua data lokasi tersimpan di HP itu
+saja dan tidak dikirim ke mana pun.
+
 ## Verifikasi wajah
 
 Pencocokan berjalan sepenuhnya di HP, tanpa mengirim foto ke mana pun. Metodenya
@@ -83,12 +111,13 @@ Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
 
 1. Buka halaman ini di Chrome pada HP cafe.
 2. Menu Chrome → **Tambahkan ke layar Utama**, agar terbuka layar penuh.
-3. Izinkan akses kamera saat diminta.
+3. Izinkan akses **kamera** dan **lokasi** saat diminta.
 4. Buka tab **Admin** (PIN bawaan `1234`), lalu:
    - ganti PIN di **Setelan**,
    - tambahkan karyawan di **Orang**, dan daftarkan wajah tiap orang (3 foto),
    - sesuaikan pola shift lewat **Jadwal → Kelola Shift**,
    - susun roster minggu ini di **Jadwal**,
+   - atur titik cafe dan radius di **Setelan → Lokasi absen**,
    - pakai **Orang → Uji Wajah** untuk menyetel ambang kecocokan sesuai
      pencahayaan cafe.
 

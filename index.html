@@ -306,6 +306,17 @@ tfoot td:first-child{background:var(--bg2)}
 .score .vd{font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-top:7px;font-weight:600}
 .score.pass .pct,.score.pass .vd{color:#3FC486}
 .score.fail .pct,.score.fail .vd{color:#F0798F}
+.score .pct.sm{font-size:30px}
+.accnote{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;color:#8E9A8B;margin-top:5px}
+.geobar{display:flex;align-items:center;gap:8px;padding:9px 16px;color:#CBD3C6;
+  font-family:var(--f-mono);font-size:11.5px;letter-spacing:.03em;background:rgba(255,255,255,.05);
+  border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+.geobar b{color:#EDF1EA}
+.geobar .acc{color:#8E9A8B}
+.geobar .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.geobar .dot.cari{background:#E0A544;animation:pulse 1.4s ease-in-out infinite}
+.geobar .dot.dalam{background:#3FC486}
+.geobar .dot.luar{background:#F0798F}
 .shots{display:flex;gap:8px;justify-content:center;padding:10px 0 4px}
 .shots div{width:52px;height:52px;border-radius:10px;border:1.5px dashed rgba(255,255,255,.3);overflow:hidden;
   display:grid;place-items:center;font-family:var(--f-mono);font-size:12px;color:rgba(255,255,255,.4)}
@@ -325,6 +336,10 @@ tfoot td:first-child{background:var(--bg2)}
 .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
 .pgrid figure{margin:0}
 .pgrid figcaption{font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+.geolink{display:block;margin-top:5px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.03em;
+  color:var(--ot);text-decoration:none}
+.geolink.bad{color:var(--late)}
+.geolink.none{color:var(--faint)}
 </style>
 
 <div class="shell">
@@ -380,7 +395,8 @@ const DEFAULTS = {
   settings:{ cafeName:"Absensi Cafe", pin:"1234", tolerance:10, minOvertime:30,
              faceMode:"warn", faceThreshold:65, retention:60,
              fineEnabled:true,
-             fineTiers:[ {upTo:15, amount:5000}, {upTo:30, amount:15000}, {upTo:null, amount:30000} ] },
+             fineTiers:[ {upTo:15, amount:5000}, {upTo:30, amount:15000}, {upTo:null, amount:30000} ],
+             geoMode:"off", geoLat:null, geoLon:null, geoRadius:100 },
   shifts:[
     { id:"sh-pagi",  code:"P", name:"Pagi",  start:"07:00", end:"15:00" },
     { id:"sh-sore",  code:"S", name:"Sore",  start:"15:00", end:"23:00" },
@@ -618,6 +634,55 @@ function empState(emp){
 function worksOn(emp, dateKey){ return !!shiftOn(emp, dateKey); }
 
 /* ============================================================
+   LOKASI — geotagging & geofencing
+   Koordinat diambil saat absen dan disimpan di HP ini saja.
+   ============================================================ */
+function geoAktif(){
+  const s = db.settings;
+  return s.geoMode !== "off" && s.geoLat !== null && s.geoLat !== undefined
+      && s.geoLon !== null && s.geoLon !== undefined;
+}
+function getPosition(timeout){
+  return new Promise(res => {
+    if(!navigator.geolocation || !window.isSecureContext) return res({ error:"unsupported" });
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat:p.coords.latitude, lon:p.coords.longitude, acc:Math.round(p.coords.accuracy) }),
+      e => res({ error: e.code === 1 ? "denied" : e.code === 2 ? "unavailable" : "timeout" }),
+      { enableHighAccuracy:true, timeout: timeout || 15000, maximumAge:10000 }
+    );
+  });
+}
+/* jarak lingkaran besar (haversine), dalam meter */
+function distM(lat1, lon1, lat2, lon2){
+  const R = 6371000, rad = Math.PI/180;
+  const dLat = (lat2-lat1)*rad, dLon = (lon2-lon1)*rad;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*rad) * Math.cos(lat2*rad) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+function jarakKeCafe(pos){
+  if(!pos || pos.error || !geoAktif()) return null;
+  return Math.round(distM(pos.lat, pos.lon, Number(db.settings.geoLat), Number(db.settings.geoLon)));
+}
+function fmtJarak(m){
+  if(m === null || m === undefined) return "—";
+  return m < 1000 ? `${m} m` : `${(m/1000).toFixed(2).replace(".",",")} km`;
+}
+const geoErrText = {
+  denied:"Izin lokasi ditolak", unavailable:"Sinyal GPS tidak tersedia",
+  timeout:"Pencarian lokasi kehabisan waktu", unsupported:"Perangkat tidak mendukung lokasi"
+};
+/* Hasil pemeriksaan geofence untuk satu posisi. */
+function cekGeo(pos){
+  if(!geoAktif()) return { status:"off" };
+  if(!pos || pos.error) return { status:"gagal", pesan: geoErrText[pos ? pos.error : "unavailable"] };
+  const jarak = jarakKeCafe(pos);
+  const radius = Number(db.settings.geoRadius) || 0;
+  return { status: jarak <= radius ? "dalam" : "luar", jarak, radius, acc:pos.acc };
+}
+function mapsLink(lat, lon){ return `https://www.google.com/maps?q=${lat},${lon}`; }
+
+/* ============================================================
    MESIN PENCOCOKAN WAJAH
    Deskriptor: HOG 6x6 sel x 8 arah (288 dim) + peta intensitas
    12x12 (144 dim), keduanya dinormalisasi L2. Kemiripan = dot
@@ -798,8 +863,12 @@ async function openCam(opts){
       <div id="fx"></div>
     </div>
     <div class="cstat" id="cstat">Menyiapkan kamera…</div>
+    ${opts.mode === "absen" && geoAktif() ? `<div class="geobar" id="geobar">
+      <span class="dot cari"></span><span id="geotxt">Mencari lokasi…</span></div>` : ""}
     <div class="cbody" id="cbody"></div>
   </div>`;
+
+  if(opts.mode === "absen" && geoAktif() && !cam.pos) mulaiLacakLokasi();
 
   const cbody = el("cbody");
   try{
@@ -824,6 +893,27 @@ async function openCam(opts){
       ${opts.mode === "enroll" ? shotsHTML() : ""}`;
     el("filecap").addEventListener("change", onFilePick);
   }
+}
+/* Lokasi dicari berbarengan dengan kamera menyala agar sudah dapat sinyal
+   saat foto diambil. Hasilnya disimpan di cam.pos. */
+async function mulaiLacakLokasi(){
+  const c = cam;
+  const pos = await getPosition(15000);
+  if(!cam || cam !== c) return;          // kamera sudah ditutup atau diganti
+  cam.pos = pos;
+  tampilGeobar();
+}
+function tampilGeobar(){
+  const bar = el("geobar"), txt = el("geotxt");
+  if(!bar || !txt) return;
+  const g = cekGeo(cam && cam.pos);
+  const dot = bar.querySelector(".dot");
+  if(!cam || !cam.pos){ txt.textContent = "Mencari lokasi…"; dot.className = "dot cari"; return; }
+  if(g.status === "gagal"){ txt.textContent = g.pesan; dot.className = "dot luar"; return; }
+  dot.className = "dot " + (g.status === "dalam" ? "dalam" : "luar");
+  txt.innerHTML = g.status === "dalam"
+    ? `Dalam area cafe · <b>${fmtJarak(g.jarak)}</b> <span class="acc">±${g.acc} m</span>`
+    : `Di luar area · <b>${fmtJarak(g.jarak)}</b> dari cafe (radius ${g.radius} m) <span class="acc">±${g.acc} m</span>`;
 }
 function shotsHTML(){
   return `<div class="shots">${[0,1,2].map(i=>{
@@ -935,9 +1025,9 @@ function shrink(canvas, size, q){
 }
 function retake(){
   const opts = { mode:cam.mode, empId:cam.empId, action:cam.action,
-                 shots:cam.shots, adminOK:cam.adminOK };
+                 shots:cam.shots, adminOK:cam.adminOK, pos:cam.pos };
   closeCam();
-  openCam(opts);
+  openCam(opts).then(() => { if(cam) tampilGeobar(); });
 }
 
 function renderEnroll(){
@@ -1004,18 +1094,44 @@ function renderVerify(){
       <div class="vd">${pass ? "Wajah cocok" : "Wajah tidak cocok"}</div></div>`;
   }
 
+  // --- lokasi ---
+  const g = cekGeo(cam.pos);
+  cam.geo = g;
+  const geoStrict = db.settings.geoMode === "strict";
+  const geoOK = g.status === "off" || g.status === "dalam";
+  if(g.status !== "off"){
+    const kelas = geoOK ? "pass" : "fail";
+    const isi = g.status === "gagal"
+      ? `<div class="pct sm">GPS</div><div class="vd">${esc(g.pesan)}</div>`
+      : `<div class="pct sm">${fmtJarak(g.jarak)}</div>
+         <div class="vd">${geoOK ? "Di dalam area cafe" : `Di luar area · radius ${g.radius} m`}</div>
+         <div class="accnote">akurasi ±${g.acc} m</div>`;
+    block += `<div class="score ${kelas}" style="padding-top:0">${isi}</div>`;
+  }
+
   let actions;
-  const blocked = !pass && mode === "strict" && !cam.adminOK;
+  const faceBlocked = !pass && mode === "strict";
+  const geoBlocked  = !geoOK && geoStrict;
+  const blocked = (faceBlocked || geoBlocked) && !cam.adminOK;
+
   if(blocked){
-    actions = `<div class="cstat" style="padding:2px 0 12px">Kecocokan di bawah ambang <b>${th}%</b>.
-        Coba lagi dengan pencahayaan lebih baik, atau minta izin admin.</div>
+    const sebab = [];
+    if(faceBlocked) sebab.push(`kecocokan wajah di bawah ambang <b>${th}%</b>`);
+    if(geoBlocked) sebab.push(g.status === "gagal"
+      ? `lokasi tidak terbaca (${esc(g.pesan.toLowerCase())})`
+      : `posisi <b>${fmtJarak(g.jarak)}</b> dari cafe, di luar radius ${g.radius} m`);
+    actions = `<div class="cstat" style="padding:2px 0 12px">Absen ditahan karena ${sebab.join(" dan ")}.
+        ${geoBlocked ? "Pastikan GPS menyala dan Anda berada di cafe. " : "Coba lagi dengan pencahayaan lebih baik. "}
+        Atau minta izin admin.</div>
       <div class="btnrow">
         <button class="btn" data-act="retake">Ulangi</button>
         <button class="btn pri" data-act="override">Izin Admin</button>
       </div>`;
   }else{
-    if(!pass) block += `<div class="cstat" style="padding:0 0 10px">Di bawah ambang ${th}% — absen tetap
+    if(!pass) block += `<div class="cstat" style="padding:0 0 10px">Wajah di bawah ambang ${th}% — absen tetap
       dicatat dan ditandai untuk dicek admin.</div>`;
+    if(!geoOK && g.status !== "off") block += `<div class="cstat" style="padding:0 0 10px">Lokasi di luar area —
+      absen tetap dicatat dan ditandai untuk dicek admin.</div>`;
     if(cam.adminOK) block += `<div class="cstat" style="padding:0 0 10px">Disetujui admin.</div>`;
     actions = `<div class="btnrow">
         <button class="btn" data-act="retake">Ulangi</button>
@@ -1026,7 +1142,7 @@ function renderVerify(){
 }
 
 async function overrideAdmin(){
-  const pin = await askPin("Izin Admin", "Setujui absen meski wajah tidak cocok");
+  const pin = await askPin("Izin Admin", "Setujui absen meski verifikasi tidak lolos");
   if(pin === null){ renderVerify(); return; }
   if(pin !== String(db.settings.pin)){ toast("PIN salah"); renderVerify(); return; }
   cam.adminOK = true;
@@ -1038,11 +1154,23 @@ async function saveAbsen(){
   if(!emp){ closeCam(); return; }
   const now = Date.now();
   const flagged = cam.score !== null && cam.score < Number(db.settings.faceThreshold);
+  // geotag: koordinat mentah selalu disimpan bila terbaca, meski geofence mati
+  const p = cam.pos && !cam.pos.error ? cam.pos : null;
+  const g = cam.geo || cekGeo(cam.pos);
+  const geoFlag = g.status === "luar" || g.status === "gagal";
+  const tag = pre => ({
+    [pre+"Lat"]: p ? +p.lat.toFixed(6) : null,
+    [pre+"Lon"]: p ? +p.lon.toFixed(6) : null,
+    [pre+"Acc"]: p ? p.acc : null,
+    [pre+"Dist"]: g.status === "dalam" || g.status === "luar" ? g.jarak : null,
+    [pre+"GeoFlag"]: g.status === "off" ? false : geoFlag
+  });
 
   if(cam.action === "masuk"){
-    const rec = { id:uid(), empId:emp.id, date:dkey(), inAt:now, outAt:null,
+    const rec = Object.assign({ id:uid(), empId:emp.id, date:dkey(), inAt:now, outAt:null,
       inScore:cam.score, outScore:null, inFlag:flagged, outFlag:false,
-      inAdmin:!!cam.adminOK, outAdmin:false, note:"", edited:false, hasIn:true, hasOut:false };
+      inAdmin:!!cam.adminOK, outAdmin:false, note:"", edited:false, hasIn:true, hasOut:false },
+      tag("in"));
     recalc(rec);
     db.records.push(rec);
     await photoSet(rec.id + ":in", cam.last.photo);
@@ -1056,6 +1184,7 @@ async function saveAbsen(){
     const rec = openRecord(emp.id);
     if(!rec){ closeCam(); toast("Tidak ada absen masuk yang terbuka"); return; }
     rec.outAt = now; rec.outScore = cam.score; rec.outFlag = flagged; rec.outAdmin = !!cam.adminOK; rec.hasOut = true;
+    Object.assign(rec, tag("out"));
     recalc(rec);
     await photoSet(rec.id + ":out", cam.last.photo);
     save();
@@ -1105,8 +1234,8 @@ function viewAbsen(){
   const feed = db.records.filter(r => r.date === k)
     .flatMap(r => {
       const emp = db.employees.find(e => e.id === r.empId); if(!emp) return [];
-      const out = [{ t:r.inAt, name:emp.name, kind:"Masuk", late:r.lateMin, flag:r.inFlag }];
-      if(r.outAt) out.push({ t:r.outAt, name:emp.name, kind:"Pulang", ot:r.otMin, flag:r.outFlag });
+      const out = [{ t:r.inAt, name:emp.name, kind:"Masuk", late:r.lateMin, flag:r.inFlag, geo:r.inGeoFlag }];
+      if(r.outAt) out.push({ t:r.outAt, name:emp.name, kind:"Pulang", ot:r.otMin, flag:r.outFlag, geo:r.outGeoFlag });
       return out;
     }).sort((a,b) => b.t - a.t);
 
@@ -1129,7 +1258,8 @@ function viewAbsen(){
         <div class="t1">${esc(f.name)}</div>
         <div class="t2">${f.kind}${f.late > 0 ? ` · telat ${fmtDur(f.late)}` : ""}${
           f.late > 0 && fineFor(f.late) ? ` · denda ${rupiah(fineFor(f.late))}` : ""}${
-          f.ot > 0 ? ` · lembur ${fmtDur(f.ot)}` : ""}${f.flag ? " · wajah perlu dicek" : ""}</div>
+          f.ot > 0 ? ` · lembur ${fmtDur(f.ot)}` : ""}${f.flag ? " · wajah perlu dicek" : ""}${
+          f.geo ? " · di luar area" : ""}</div>
       </div>
       <div class="tm">${hm(f.t)}</div>
     </div>`).join("")}</div>`
@@ -1482,6 +1612,7 @@ function secRekap(){
   const rows = summarize();
   const { label } = periodRange();
   const flagged = db.records.filter(r => (r.inFlag || r.outFlag)).length;
+  const geoFlagged = db.records.filter(r => (r.inGeoFlag || r.outGeoFlag)).length;
   const anyData = rows.some(r => r.recs.length);
   return `
   <div class="field">
@@ -1494,6 +1625,8 @@ function secRekap(){
   </div>
   ${flagged ? `<div class="note warn" style="margin-bottom:12px">${flagged} absen dengan kecocokan wajah
     di bawah ambang. Buka rincian karyawan untuk memeriksa fotonya.</div>` : ""}
+  ${geoFlagged ? `<div class="note warn" style="margin-bottom:12px">${geoFlagged} absen tercatat di luar
+    area cafe atau tanpa sinyal GPS. Buka rincian karyawan untuk melihat titik lokasinya di peta.</div>` : ""}
   <div class="sect"><h2>${esc(label)}</h2><span class="lbl">Ketuk baris untuk rincian</span></div>
   ${db.employees.length ? `
   <div class="twrap"><table>
@@ -1544,6 +1677,7 @@ function openEmpDetail(id){
       if(r.earlyMin > 0) bits.push(`pulang cepat ${fmtDur(r.earlyMin)}`);
       if(!r.outAt) bits.push(`<b>belum absen pulang</b>`);
       if(r.inFlag || r.outFlag) bits.push(`<span style="color:var(--late)">wajah perlu dicek</span>`);
+      if(r.inGeoFlag || r.outGeoFlag) bits.push(`<span style="color:var(--late)">lokasi perlu dicek</span>`);
       if(r.edited) bits.push(`diedit admin`);
       return `<button class="item" data-act="editrec" data-id="${r.id}">
         <div class="grow"><div class="t1">${shortDate(r.date)}</div>
@@ -1582,10 +1716,17 @@ function openRecEdit(rid){
 async function loadRecPhotos(r){
   const box = el("recphotos"); if(!box) return;
   const [pi, po] = await Promise.all([photoGet(r.id + ":in"), photoGet(r.id + ":out")]);
-  const cell = (p, cap, score) => p
-    ? `<figure><figcaption>${cap}${score !== null && score !== undefined ? ` · ${score}%` : ""}</figcaption>
-       <img class="photo" src="${p}" alt="${cap}"></figure>` : "";
-  const html = cell(pi, "Foto masuk", r.inScore) + cell(po, "Foto pulang", r.outScore);
+  const cell = (p, cap, score, lat, lon, dist, flag) => {
+    if(!p && lat == null) return "";
+    const lok = lat != null
+      ? `<a class="geolink ${flag ? "bad" : ""}" href="${mapsLink(lat,lon)}" target="_blank" rel="noopener"
+           >${dist != null ? fmtJarak(dist) + " dari cafe" : "lihat lokasi"} ↗</a>`
+      : `<span class="geolink none">tanpa lokasi</span>`;
+    return `<figure><figcaption>${cap}${score !== null && score !== undefined ? ` · ${score}%` : ""}</figcaption>
+      ${p ? `<img class="photo" src="${p}" alt="${cap}">` : ""}${lok}</figure>`;
+  };
+  const html = cell(pi, "Foto masuk", r.inScore, r.inLat, r.inLon, r.inDist, r.inGeoFlag)
+             + cell(po, "Foto pulang", r.outScore, r.outLat, r.outLon, r.outDist, r.outGeoFlag);
   box.innerHTML = html;
   if(!html) box.style.display = "none";
 }
@@ -1787,6 +1928,42 @@ function secSetelan(){
     identitas dengan posisi HP dan pencahayaan yang konsisten. Ini bukan pengenalan wajah tingkat keamanan tinggi
     — foto selfie tiap absen tetap disimpan sebagai bukti utama.</div>
 
+  <div class="sect"><h2>Lokasi absen</h2></div>
+  <div class="field"><label for="sg">Mode</label>
+    <select id="sg" data-act="setting" data-k="geoMode">
+      ${[["strict","Wajib di area"],["warn","Peringatan saja"],["off","Nonaktif"]].map(([k,l]) =>
+        `<option value="${k}" ${s.geoMode===k?"selected":""}>${l}</option>`).join("")}</select>
+    <span class="hint">${
+      s.geoMode === "strict" ? "Absen ditolak bila di luar radius atau GPS mati, kecuali disetujui admin."
+      : s.geoMode === "warn" ? "Absen tetap tercatat, tapi ditandai bila di luar radius."
+      : "Tidak ada pembatasan area. Koordinat tetap disimpan bila titik cafe sudah diisi."}</span></div>
+  ${s.geoMode !== "off" && !geoAktif() ? `<div class="note warn" style="margin-bottom:12px">Titik lokasi cafe
+    belum diisi, jadi pembatasan area belum aktif. Berdiri di cafe lalu tekan
+    <b>Pakai Lokasi Saat Ini</b>.</div>` : ""}
+  <div class="row" style="gap:10px">
+    <div class="field grow"><label for="glat">Lintang (latitude)</label>
+      <input type="number" id="glat" step="0.000001" min="-90" max="90" inputmode="decimal"
+        value="${s.geoLat ?? ""}" placeholder="-6.200000" data-act="setting" data-k="geoLat"></div>
+    <div class="field grow"><label for="glon">Bujur (longitude)</label>
+      <input type="number" id="glon" step="0.000001" min="-180" max="180" inputmode="decimal"
+        value="${s.geoLon ?? ""}" placeholder="106.816666" data-act="setting" data-k="geoLon"></div>
+  </div>
+  <div class="btnrow" style="margin-bottom:12px">
+    <button class="btn" data-act="geohere">Pakai Lokasi Saat Ini</button>
+    <button class="btn" data-act="geotest" ${geoAktif() ? "" : "disabled"}>Uji Jarak</button>
+  </div>
+  ${geoAktif() ? `<div class="hint" style="margin-bottom:12px">Titik cafe:
+    <a href="${mapsLink(s.geoLat, s.geoLon)}" target="_blank" rel="noopener"
+       style="color:var(--accent)">lihat di peta</a></div>` : ""}
+  <div class="field"><label for="grad">Radius area — ${s.geoRadius} meter</label>
+    <input type="range" id="grad" min="20" max="500" step="10" value="${s.geoRadius}"
+      data-act="setting" data-k="geoRadius">
+    <span class="hint">GPS di dalam ruangan biasanya meleset 20–50 meter, kadang lebih.
+      Radius di bawah 50 meter cenderung menolak karyawan yang sebenarnya sudah di cafe.
+      Pakai <b>Uji Jarak</b> beberapa kali dari dalam cafe untuk mencari angka yang aman.</span></div>
+  <div class="note">Koordinat absen disimpan di HP ini saja dan ikut terbawa saat ekspor CSV
+    maupun cadangan. Tidak ada yang dikirim ke server mana pun.</div>
+
   <div class="sect"><h2>Keamanan</h2></div>
   <button class="btn blk" data-act="changepin">Ubah PIN Admin</button>
 
@@ -1902,7 +2079,10 @@ function buildCSV(kind){
     rows.push(["Tanggal","Hari","Nama","Posisi","Shift","Jadwal Masuk","Jadwal Pulang","Jam Masuk","Jam Pulang",
       "Terlambat (menit)", ...(withFine ? ["Denda (Rp)"] : []),
       "Pulang Cepat (menit)","Lembur (menit)","Durasi Kerja (menit)","Durasi Kerja (jam)",
-      "Cocok Wajah Masuk (%)","Cocok Wajah Pulang (%)","Status","Catatan"]);
+      "Cocok Wajah Masuk (%)","Cocok Wajah Pulang (%)",
+      "Lat Masuk","Lon Masuk","Akurasi Masuk (m)","Jarak Masuk (m)",
+      "Lat Pulang","Lon Pulang","Akurasi Pulang (m)","Jarak Pulang (m)",
+      "Status","Catatan"]);
     const recs = db.records.filter(r => r.date >= from && r.date <= to)
       .sort((a,b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.inAt - b.inAt));
     for(const r of recs){
@@ -1914,13 +2094,18 @@ function buildCSV(kind){
       if(r.lateMin > 0) flags.push("Terlambat");
       if(!r.outAt) flags.push("Belum absen pulang");
       if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
+      if(r.inGeoFlag || r.outGeoFlag) flags.push("Lokasi di luar area");
       if(r.edited) flags.push("Diedit admin");
+      const n = v => (v === null || v === undefined) ? "" : v;
       rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "",
         sh ? sh.name : "", sh ? sh.start : "", sh ? sh.end : "",
         hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0, ...(withFine ? [fineFor(r.lateMin)] : []),
         r.earlyMin || 0, r.otMin || 0,
         r.workMin || 0, fmtJam(r.workMin), r.inScore == null ? "" : r.inScore,
-        r.outScore == null ? "" : r.outScore, flags.join(", ") || "Normal", r.note || ""]);
+        r.outScore == null ? "" : r.outScore,
+        n(r.inLat), n(r.inLon), n(r.inAcc), n(r.inDist),
+        n(r.outLat), n(r.outLon), n(r.outAcc), n(r.outDist),
+        flags.join(", ") || "Normal", r.note || ""]);
     }
   }else{
     rows.push(["Nama","Posisi","Hari Kerja Terjadwal","Hadir","Alpa","Jumlah Telat",
@@ -2111,6 +2296,36 @@ document.addEventListener("click", async (ev) => {
       save(); render();
       break;
     }
+    case "geohere": {
+      toast("Mencari lokasi…");
+      const p = await getPosition(20000);
+      if(p.error){ toast(geoErrText[p.error]); break; }
+      db.settings.geoLat = +p.lat.toFixed(6);
+      db.settings.geoLon = +p.lon.toFixed(6);
+      save(); render(); showUsage();
+      toast(`Titik cafe disimpan · akurasi ±${p.acc} m`);
+      break;
+    }
+    case "geotest": {
+      toast("Mengukur jarak…");
+      const p = await getPosition(20000);
+      if(p.error){ toast(geoErrText[p.error]); break; }
+      const jarak = jarakKeCafe(p);
+      const r = Number(db.settings.geoRadius);
+      sheet(`<h3>Uji Jarak</h3>
+        <div class="sub">Posisi Anda sekarang terhadap titik cafe</div>
+        <div class="score ${jarak <= r ? "pass" : "fail"}" style="color:var(--text)">
+          <div class="pct" style="color:${jarak <= r ? "var(--ok)" : "var(--late)"}">${fmtJarak(jarak)}</div>
+          <div class="vd" style="color:${jarak <= r ? "var(--ok)" : "var(--late)"}">
+            ${jarak <= r ? "Di dalam area" : "Di luar area"}</div>
+          <div class="accnote" style="color:var(--muted)">radius ${r} m · akurasi GPS ±${p.acc} m</div>
+        </div>
+        <div class="hint" style="margin:6px 0 14px">Ulangi beberapa kali dari titik-titik berbeda di dalam
+          cafe. Ambil jarak terbesar yang muncul, lalu tambahkan margin akurasi GPS untuk menentukan radius.</div>
+        <div class="btnrow"><button class="btn" data-act="geotest">Ukur Lagi</button>
+          <button class="btn pri" data-act="scrim">Tutup</button></div>`);
+      break;
+    }
     case "changepin": changePin(); break;
     case "backup": backup(); break;
     case "prune": pruneOld(false); break;
@@ -2126,13 +2341,18 @@ document.addEventListener("input", (ev) => {
   if(t.dataset.act === "setting"){
     const k = t.dataset.k;
     let v = t.value;
-    if(["tolerance","minOvertime","faceThreshold","retention"].includes(k)) v = Math.max(0, Number(v) || 0);
+    if(["tolerance","minOvertime","faceThreshold","retention","geoRadius"].includes(k)) v = Math.max(0, Number(v) || 0);
+    if(k === "geoLat" || k === "geoLon") v = t.value.trim() === "" ? null : Number(t.value);
     db.settings[k] = v;
     save();
     if(k === "cafeName") el("cafeName").textContent = v || "Absensi Cafe";
     if(k === "faceThreshold"){
       const lab = t.previousElementSibling;
       if(lab && lab.tagName === "LABEL") lab.textContent = `Ambang kecocokan — ${v}%`;
+    }
+    if(k === "geoRadius"){
+      const lab = t.previousElementSibling;
+      if(lab && lab.tagName === "LABEL") lab.textContent = `Radius area — ${v} meter`;
     }
     if(["tolerance","minOvertime"].includes(k)) recalcAll();
     return;
