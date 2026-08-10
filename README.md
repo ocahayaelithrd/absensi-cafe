@@ -20,6 +20,7 @@ Foto selfie selalu disimpan sebagai bukti.
 - **Geotagging & geofencing** — koordinat tersimpan di tiap absen, dengan
   pembatasan radius area cafe
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
+- **Urutan nama A–Z / Z–A** yang berlaku serempak di semua daftar
 - **Ekspor CSV** detail dan rekap untuk perhitungan gaji
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
   salah, cadangkan dan pulihkan data
@@ -68,6 +69,17 @@ otomatis. Telat 0 menit tidak pernah kena denda. Denda dihitung saat ditampilkan
 bukan disimpan di catatan absen, sehingga perubahan tarif langsung berlaku
 konsisten di seluruh rekap. Seluruh fitur denda bisa dimatikan lewat satu sakelar
 — saat mati, kolomnya hilang dari rekap maupun CSV.
+
+## Urutan nama
+
+Semua daftar karyawan diurutkan menurut nama: layar absen, grid jadwal, daftar
+orang, tabel rekap, pilihan absen manual, dan ekspor CSV. Arahnya diubah lewat
+tombol **Nama A–Z** di layar absen dan daftar orang, atau dengan mengetuk kolom
+**Karyawan** pada tabel jadwal dan rekap. Satu pilihan berlaku serempak di semua
+layar dan tersimpan di HP.
+
+Pengurutan mengabaikan huruf besar-kecil dan tanda aksen, serta membaca angka
+secara numerik — sehingga *Budi 2* berada sebelum *Budi 10*, bukan sesudahnya.
 
 ## Lokasi absen
 

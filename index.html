@@ -257,6 +257,13 @@ tfoot td:first-child{background:var(--bg2)}
 .note.warn{background:var(--late-soft);border-color:color-mix(in srgb,var(--late) 32%,transparent)}
 .sect{margin:20px 0 9px;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .sect h2{margin:0;font-family:var(--f-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+/* padding besar untuk area sentuh jempol, margin negatif agar tata letak tetap rapat */
+.sortbtn{background:none;border:0;padding:13px 2px 7px 14px;margin:-13px -2px -7px 0;
+  cursor:pointer;white-space:nowrap;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:600;color:var(--accent)}
+.sortbtn:active{opacity:.55}
+th[data-act="sortname"]{cursor:pointer;color:var(--accent)}
+th[data-act="sortname"]:active{background:var(--accent-soft)}
 
 /* ---- sheet ---- */
 .scrim{position:fixed;inset:0;background:rgba(8,12,8,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center}
@@ -396,7 +403,8 @@ const DEFAULTS = {
              faceMode:"warn", faceThreshold:65, retention:60,
              fineEnabled:true,
              fineTiers:[ {upTo:15, amount:5000}, {upTo:30, amount:15000}, {upTo:null, amount:30000} ],
-             geoMode:"off", geoLat:null, geoLon:null, geoRadius:100 },
+             geoMode:"off", geoLat:null, geoLon:null, geoRadius:100,
+             sortDir:"asc" },
   shifts:[
     { id:"sh-pagi",  code:"P", name:"Pagi",  start:"07:00", end:"15:00" },
     { id:"sh-sore",  code:"S", name:"Sore",  start:"15:00", end:"23:00" },
@@ -543,6 +551,18 @@ function tierLabel(i){
   if(t.upTo === null || t.upTo === undefined || t.upTo === "") return `Lebih dari ${from-1} menit`;
   return `${from}–${t.upTo} menit`;
 }
+/* ---------- urutan nama ----------
+   Satu arah urut dipakai di semua daftar karyawan agar posisi nama sama
+   di layar absen, jadwal, daftar orang, dan rekap. */
+function byName(a, b){
+  const r = String(a.name||"").localeCompare(String(b.name||""), "id",
+    { sensitivity:"base", numeric:true });
+  return db.settings.sortDir === "desc" ? -r : r;
+}
+function sortedEmps(list){ return (list || db.employees).slice().sort(byName); }
+function sortLabel(){ return db.settings.sortDir === "desc" ? "Nama Z–A" : "Nama A–Z"; }
+function sortArrow(){ return db.settings.sortDir === "desc" ? "↓" : "↑"; }
+
 /* ---------- roster: jadwal shift per tanggal ---------- */
 function shiftById(id){ return (db.shifts || []).find(s => s.id === id) || null; }
 /* Buang entri yang menunjuk shift atau karyawan yang sudah tidak ada, agar
@@ -1213,7 +1233,7 @@ function render(){
 
 /* ---------- tab absen ---------- */
 function viewAbsen(){
-  const emps = db.employees.filter(e => e.active !== false);
+  const emps = sortedEmps(db.employees.filter(e => e.active !== false));
   if(!emps.length){
     return `<div class="card"><div class="empty">
       <div class="big">Belum ada karyawan</div>
@@ -1247,6 +1267,8 @@ function viewAbsen(){
     <div class="v-off"><b>${belum}</b><span>Belum</span></div>
   </div>
   ${emps.length > 8 ? `<div class="field"><input type="text" id="q" placeholder="Cari nama karyawan…" value="${esc(filterQ)}"></div>` : ""}
+  <div class="sect"><h2>${emps.length} karyawan</h2>
+    <button class="sortbtn" data-act="sortname">${sortLabel()} ${sortArrow()}</button></div>
   <div class="grid">
     ${shown.map(({e,st}) => empCard(e,st)).join("")}
   </div>
@@ -1390,7 +1412,7 @@ function weekLabel(start){
   return `${ad} ${MONTHS[am-1]} ${ay} – ${bd} ${MONTHS[bm-1]} ${by}`;
 }
 function secJadwal(){
-  const emps = db.employees.filter(e => e.active !== false);
+  const emps = sortedEmps(db.employees.filter(e => e.active !== false));
   const ds = weekDates(weekStart);
   const today = dkey();
   // hanya hitung yang benar-benar tampil terisi: shift yang masih ada, atau libur
@@ -1419,7 +1441,7 @@ function secJadwal(){
   </div>
 
   <div class="twrap"><table class="roster">
-    <thead><tr><th>Karyawan</th>${ds.map(k => {
+    <thead><tr><th data-act="sortname" title="Ubah urutan nama">Karyawan ${sortArrow()}</th>${ds.map(k => {
       const [,,dd] = k.split("-");
       const [y,m,d] = k.split("-").map(Number);
       return `<th class="dayhead ${k === today ? "kini" : ""}" data-act="fillday" data-k="${k}"
@@ -1588,7 +1610,7 @@ function periodRange(){
 function summarize(){
   const { from, to } = periodRange();
   const today = dkey();
-  return db.employees.map(e => {
+  return sortedEmps().map(e => {
     const rs = db.records.filter(r => r.empId === e.id && r.date >= from && r.date <= to);
     const hadirDays = new Set(rs.map(r => r.date));
     let sched = 0;
@@ -1630,7 +1652,7 @@ function secRekap(){
   <div class="sect"><h2>${esc(label)}</h2><span class="lbl">Ketuk baris untuk rincian</span></div>
   ${db.employees.length ? `
   <div class="twrap"><table>
-    <thead><tr><th>Karyawan</th><th>Hadir</th><th>Alpa</th><th>Telat</th><th>Telat&nbsp;(m)</th>${
+    <thead><tr><th data-act="sortname" title="Ubah urutan nama">Karyawan ${sortArrow()}</th><th>Hadir</th><th>Alpa</th><th>Telat</th><th>Telat&nbsp;(m)</th>${
       db.settings.fineEnabled ? "<th>Denda</th>" : ""}<th>Kerja&nbsp;(j)</th><th>Lembur&nbsp;(j)</th></tr></thead>
     <tbody>${rows.map(r => `
       <tr data-act="empdetail" data-id="${r.e.id}">
@@ -1758,7 +1780,7 @@ function openManual(){
     <h3>Tambah Absen Manual</h3>
     <div class="sub">Untuk karyawan yang lupa absen di HP</div>
     <div class="field"><label for="mk">Karyawan</label>
-      <select id="mk">${db.employees.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></div>
+      <select id="mk">${sortedEmps().map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></div>
     <div class="field"><label for="md">Tanggal</label><input type="date" id="md" value="${dkey()}"></div>
     <div class="row" style="gap:10px">
       <div class="field grow"><label for="mi">Jam masuk</label><input type="time" id="mi" value="08:00"></div>
@@ -1789,8 +1811,9 @@ function saveManual(){
 function secKaryawan(){
   return `
   <button class="btn pri blk" data-act="newemp">+ Tambah Karyawan</button>
-  <div class="sect"><h2>Daftar karyawan</h2><span class="lbl">${db.employees.length} orang</span></div>
-  ${db.employees.length ? `<div class="list">${db.employees.map(e => {
+  <div class="sect"><h2>Daftar karyawan · ${db.employees.length} orang</h2>
+    <button class="sortbtn" data-act="sortname">${sortLabel()} ${sortArrow()}</button></div>
+  ${db.employees.length ? `<div class="list">${sortedEmps().map(e => {
     const n = e.templates ? e.templates.length : 0;
     return `<button class="item" data-act="editemp" data-id="${e.id}">
       ${e.avatar ? `<img class="ava" src="${e.avatar}" alt="" style="transform:scaleX(-1)">`
@@ -2189,6 +2212,11 @@ document.addEventListener("click", async (ev) => {
     case "tab":
       activeTab = t.dataset.tab; filterQ = ""; render();
       if(activeTab === "admin" && adminUnlocked && adminSec === "setelan") showUsage();
+      break;
+    case "sortname":
+      db.settings.sortDir = db.settings.sortDir === "desc" ? "asc" : "desc";
+      save(); render();
+      toast(`Urutan: ${sortLabel()}`);
       break;
     case "emp": openEmpSheet(id); break;
     case "go": {
