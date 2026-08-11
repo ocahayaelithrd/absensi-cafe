@@ -4,12 +4,22 @@
    supaya file ini juga benar saat dibuka langsung di HP. */
 (function(){
   document.documentElement.lang = "id";
-  if(!document.querySelector('meta[name="viewport"]')){
-    var m = document.createElement("meta");
-    m.name = "viewport";
-    m.content = "width=device-width, initial-scale=1, viewport-fit=cover";
-    document.head.appendChild(m);
+  function tambah(tag, atts){
+    var el = document.createElement(tag);
+    for(var k in atts) el.setAttribute(k, atts[k]);
+    document.head.appendChild(el);
   }
+  if(!document.querySelector('meta[name="viewport"]'))
+    tambah("meta", { name:"viewport", content:"width=device-width, initial-scale=1, viewport-fit=cover" });
+  if(!document.querySelector('link[rel="manifest"]'))
+    tambah("link", { rel:"manifest", href:"manifest.webmanifest" });
+  // warna bilah status mengikuti tema perangkat
+  if(!document.querySelector('meta[name="theme-color"]')){
+    tambah("meta", { name:"theme-color", media:"(prefers-color-scheme: dark)",  content:"#0C110D" });
+    tambah("meta", { name:"theme-color", media:"(prefers-color-scheme: light)", content:"#F0F2EE" });
+  }
+  if(!document.querySelector('link[rel="icon"]'))
+    tambah("link", { rel:"icon", type:"image/png", href:"icon-192.png" });
 })();
 </script>
 <style>
@@ -210,6 +220,17 @@ td.cell:active{filter:brightness(.93)}
 .shopt .grow{display:flex;flex-direction:column;gap:2px}
 .shn{font-weight:600;font-size:14.5px}
 .shr{font-size:11.5px;color:var(--muted)}
+
+/* ---- baris status luring ---- */
+.stat2{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden}
+.statrow{display:flex;align-items:center;gap:11px;padding:11px 12px;background:var(--surface)}
+.dot2{width:9px;height:9px;border-radius:50%;flex:none}
+.dot2.ok{background:var(--ok)}
+.dot2.warn{background:var(--accent)}
+.dot2.off{background:var(--off)}
+.statnm{font-weight:600;font-size:14px}
+.statv{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);margin-top:1px}
 
 /* ---- tingkatan denda ---- */
 .tiers{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
@@ -1987,6 +2008,33 @@ function secSetelan(){
   <div class="sect"><h2>Keamanan</h2></div>
   <button class="btn blk" data-act="changepin">Ubah PIN Admin</button>
 
+  <div class="sect"><h2>Luring & ketahanan data</h2></div>
+  <div class="stat2">
+    <div class="statrow">
+      <span class="dot2 ${luringSiap === true ? "ok" : luringSiap === "tidak-didukung" ? "off" : "warn"}"></span>
+      <div class="grow"><div class="statnm">Mode luring</div>
+        <div class="statv">${LABEL_LURING[luringSiap] || "Belum tersimpan"}</div></div>
+    </div>
+    <div class="statrow">
+      <span class="dot2 ${persistStatus === "aktif" ? "ok" : persistStatus === "tidak-didukung" ? "off" : "warn"}"></span>
+      <div class="grow"><div class="statnm">Penyimpanan permanen</div>
+        <div class="statv">${LABEL_PERSIST[persistStatus]}</div></div>
+    </div>
+  </div>
+  <div class="btnrow" style="margin-top:10px">
+    <button class="btn" data-act="mintapersist" ${persistStatus === "aktif" || persistStatus === "tidak-didukung" ? "disabled" : ""}>Minta Izin</button>
+    <button class="btn" data-act="perbarui" ${luringSiap === true ? "" : "disabled"}>Perbarui Aplikasi</button>
+  </div>
+  <div class="hint" style="margin-top:8px">${
+    luringSiap === true
+      ? "Aplikasi tersimpan di HP, jadi tetap bisa dibuka saat wifi cafe mati. Absen yang dicatat selama luring tersimpan normal karena tidak butuh jaringan."
+      : luringSiap === "tidak-didukung"
+        ? "Mode luring butuh alamat https. Kalau berkas ini dibuka langsung dari penyimpanan HP (file://), fiturnya tidak tersedia."
+        : "Muat ulang halaman sekali sambil terhubung internet agar aplikasi tersimpan untuk dipakai luring."}
+    ${persistStatus === "belum" || persistStatus === "ditolak"
+      ? " Izin penyimpanan permanen biasanya baru diberikan setelah aplikasi dipasang ke layar utama — pasang dulu, lalu tekan Minta Izin."
+      : ""}</div>
+
   <div class="sect"><h2>Data & penyimpanan</h2></div>
   <div class="field"><label for="sr">Simpan foto selama (hari)</label>
     <input type="number" id="sr" min="0" max="365" value="${s.retention}" data-act="setting" data-k="retention">
@@ -2561,6 +2609,23 @@ document.addEventListener("click", async (ev) => {
           <button class="btn pri" data-act="scrim">Tutup</button></div>`);
       break;
     }
+    case "mintapersist": {
+      const s = await pastikanPenyimpananPermanen(true);
+      render();
+      toast(s === "aktif" ? "Penyimpanan permanen aktif — data absensi dilindungi"
+        : s === "ditolak" ? "Browser menolak. Pasang aplikasi ke layar utama lebih dulu, lalu coba lagi"
+        : "Browser ini tidak mendukung penyimpanan permanen");
+      break;
+    }
+    case "perbarui": {
+      if(!swReg){ toast("Mode luring belum aktif"); break; }
+      toast("Memeriksa pembaruan…");
+      try{ await swReg.update(); }catch(e){}
+      const aktif = swReg.active || navigator.serviceWorker.controller;
+      if(aktif) aktif.postMessage("segarkan");
+      else toast("Belum ada service worker aktif — muat ulang halaman dulu");
+      break;
+    }
     case "changepin": changePin(); break;
     case "backup": backup(); break;
     case "prune": pruneOld(false); break;
@@ -2634,6 +2699,57 @@ function tickClock(){
   if(k !== lastKey){ lastKey = k; el("today").textContent = longDate(k); if(activeTab === "absen") render(); }
 }
 
+/* ============================================================
+   LURING & KETAHANAN DATA
+   ============================================================ */
+let swReg = null;
+let luringSiap = false;
+let persistStatus = "belum";   // aktif | belum | ditolak | tidak-didukung
+
+async function pasangServiceWorker(){
+  if(!("serviceWorker" in navigator) || !window.isSecureContext){
+    luringSiap = "tidak-didukung";
+    return;
+  }
+  try{
+    swReg = await navigator.serviceWorker.register("sw.js");
+    luringSiap = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { luringSiap = true; segarkanStatusLuring(); });
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if(e.data === "tersegarkan"){
+        toast("Aplikasi diperbarui — tutup dan buka lagi untuk memakainya");
+      }
+    });
+    // sesudah pemasangan pertama, cache siap begitu SW mengambil alih
+    if(swReg.active && !navigator.serviceWorker.controller) luringSiap = true;
+  }catch(e){
+    luringSiap = false;
+  }
+  segarkanStatusLuring();
+}
+
+/* Tanpa ini Chrome boleh membuang localStorage dan IndexedDB saat memori
+   HP sesak. Izin biasanya baru diberikan setelah aplikasi dipasang ke
+   layar utama, jadi permintaan diulang tiap kali aplikasi dibuka. */
+async function pastikanPenyimpananPermanen(diminta){
+  if(!navigator.storage || !navigator.storage.persist){
+    persistStatus = "tidak-didukung";
+    return persistStatus;
+  }
+  try{
+    if(await navigator.storage.persisted()){ persistStatus = "aktif"; }
+    else { persistStatus = (await navigator.storage.persist()) ? "aktif" : (diminta ? "ditolak" : "belum"); }
+  }catch(e){ persistStatus = "tidak-didukung"; }
+  return persistStatus;
+}
+function segarkanStatusLuring(){
+  if(activeTab === "admin" && adminSec === "setelan" && adminUnlocked && !el("layer").innerHTML) render();
+}
+const LABEL_LURING = { true:"Siap dipakai luring", false:"Belum tersimpan",
+                       "tidak-didukung":"Tidak didukung browser ini" };
+const LABEL_PERSIST = { aktif:"Aktif — data dilindungi", belum:"Belum diberikan",
+                        ditolak:"Ditolak browser", "tidak-didukung":"Tidak didukung browser ini" };
+
 /* ---------- mulai ---------- */
 loadDB();
 recalcAll();
@@ -2641,6 +2757,8 @@ render();
 tickClock();
 setInterval(tickClock, 1000);
 pruneOld(true);
+pasangServiceWorker();
+pastikanPenyimpananPermanen(false).then(segarkanStatusLuring);
 document.addEventListener("visibilitychange", () => {
   if(!document.hidden && activeTab === "absen" && !cam && !el("layer").innerHTML) render();
 });

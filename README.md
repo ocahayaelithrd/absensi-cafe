@@ -1,8 +1,8 @@
 # Absensi Cafe
 
 Aplikasi absensi terpusat untuk karyawan cafe, dijalankan dari **satu HP Android**
-yang diletakkan di dekat kasir. Seluruhnya satu berkas HTML, tanpa server dan
-tanpa internet setelah halaman terbuka.
+yang diletakkan di dekat kasir. Tanpa server, tanpa akun, dan setelah dipasang
+tetap bisa dibuka meski internet cafe mati.
 
 ## Cara kerja
 
@@ -24,6 +24,8 @@ Foto selfie selalu disimpan sebagai bukti.
 - **Ekspor Excel (.xlsx)** tiga lembar untuk perhitungan gaji
 - **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
   salah, cadangkan dan pulihkan data
+- **Bekerja luring** — terpasang sebagai aplikasi di layar utama dan tetap
+  terbuka saat internet cafe mati
 
 ## Jadwal shift
 
@@ -146,9 +148,11 @@ Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
 
 ## Pemasangan
 
-1. Buka halaman ini di Chrome pada HP cafe.
-2. Menu Chrome → **Tambahkan ke layar Utama**, agar terbuka layar penuh.
-3. Izinkan akses **kamera** dan **lokasi** saat diminta.
+1. Buka halaman ini di Chrome pada HP cafe, sambil terhubung internet sekali
+   agar aplikasinya tersimpan untuk dipakai luring.
+2. Menu Chrome → **Tambahkan ke layar Utama**, lalu buka dari layar utama.
+3. Izinkan akses **kamera** dan **lokasi** saat diminta, dan tekan **Minta Izin**
+   di **Setelan → Luring & ketahanan data** agar data tidak boleh dibuang Chrome.
 4. Buka tab **Admin** (PIN bawaan `1234`), lalu:
    - ganti PIN di **Setelan**,
    - tambahkan karyawan di **Orang**, dan daftarkan wajah tiap orang (3 foto),
@@ -161,9 +165,36 @@ Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
 Letakkan HP di dudukan permanen. Bila HP dipindah atau lampu diganti, daftarkan
 ulang wajah karyawan.
 
+## Luring & ketahanan data
+
+Aplikasi memasang **service worker** ([`sw.js`](sw.js)) yang menyimpan berkasnya
+di HP, sehingga tetap terbuka saat wifi cafe mati. Absen yang dicatat selama
+luring tersimpan normal — tidak ada langkah yang butuh jaringan, termasuk ekspor
+Excel yang seluruhnya dirakit di HP.
+
+Strateginya *cache-first* dengan pembaruan latar belakang: halaman tampil
+seketika dari simpanan, versi baru diambil diam-diam, lalu dipakai pada
+pembukaan berikutnya. Pembaruan latar belakang memakai `cache: "no-cache"`
+supaya tidak tertahan cache HTTP — GitHub Pages mengirim `max-age=600`, dan
+tanpa itu versi baru bisa telat sampai sepuluh menit. Untuk memaksa segera,
+tekan **Perbarui Aplikasi** di Setelan.
+
+Aplikasi juga meminta **penyimpanan permanen** (`navigator.storage.persist()`)
+setiap kali dibuka. Tanpa izin ini Chrome boleh membuang `localStorage` dan
+`IndexedDB` saat memori HP sesak. Izinnya biasanya baru diberikan setelah
+aplikasi dipasang ke layar utama, jadi pasang dulu lalu tekan **Minta Izin**.
+Status keduanya terlihat di **Setelan → Luring & ketahanan data**.
+
+Berkas [`manifest.webmanifest`](manifest.webmanifest) membuat "Tambahkan ke layar
+Utama" menghasilkan aplikasi layar penuh, bukan sekadar pintasan. Ikonnya
+dibangkitkan secara prosedural sebagai PNG, tanpa perkakas gambar.
+
 ## Data
 
 Semua data tersimpan di HP itu saja — pengaturan dan catatan absen di
 `localStorage`, foto di `IndexedDB`. Tidak ada server dan tidak ada akun.
+Aplikasi tidak punya satu pun `fetch`, `XMLHttpRequest`, atau `WebSocket` ke
+layanan luar; satu-satunya data yang bisa keluar adalah koordinat yang Anda
+kirim sendiri saat mengetuk tautan peta.
 Ekspor Excel setiap tutup buku dan gunakan **Cadangkan (JSON)** secara berkala;
 bila HP hilang atau di-reset, datanya ikut hilang.
