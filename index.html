@@ -2230,7 +2230,12 @@ function secSetelan(){
       <button class="btn ghost" data-act="fbkeluar">Keluar</button>
     </div>
     <div class="hint" style="margin-top:8px">Tablet adalah sumber kebenaran; awan hanya salinan.
-      Perubahan terkirim otomatis beberapa detik setelah terjadi, dan mengendap dulu bila internet mati.</div>`;
+      Perubahan terkirim otomatis beberapa detik setelah terjadi, dan mengendap dulu bila internet mati.</div>
+    <div class="sect" style="margin-top:16px"><h2>Jadikan perangkat ini acuan</h2></div>
+    <button class="btn dgr blk" data-act="fbtimpa" ${sync.sibuk ? "disabled" : ""}>Timpa Awan dari Perangkat Ini</button>
+    <div class="hint" style="margin-top:8px">Menghapus seluruh isi awan lalu mengunggah ulang dari
+      perangkat ini. Dipakai sekali saat memindahkan data asli dari tablet, supaya sisa data uji dari
+      perangkat lain tidak bercampur. <b>Data di perangkat ini tidak diubah.</b></div>`;
   })() : `
     <div class="field" style="margin-top:12px"><label for="fbEmail">Email akun cafe</label>
       <input type="email" id="fbEmail" autocomplete="username" inputmode="email"
@@ -2962,6 +2967,7 @@ document.addEventListener("click", async (ev) => {
     case "fbmasuk": masukAwan(); break;
     case "fbkeluar": keluarAwan(); break;
     case "fbsync": dorongKeAwan(true); break;
+    case "fbtimpa": timpaAwanDariSini(); break;
     case "mintapersist": {
       const s = await pastikanPenyimpananPermanen(true);
       render();
@@ -3243,6 +3249,41 @@ async function dorongKeAwan(manual){
   }
   sync.sibuk = false; segarkanStatusAwan();
 }
+/* Menjadikan perangkat ini acuan: seluruh isi awan dihapus lalu diunggah ulang
+   dari sini. Dipakai saat memindahkan data asli dari tablet, agar sisa data uji
+   dari perangkat lain tidak bercampur. Data lokal tidak diubah sama sekali. */
+async function timpaAwanDariSini(){
+  if(!fb.siap || !fb.db || !fb.user){ toast("Belum masuk ke akun cafe"); return; }
+  if(sync.sibuk){ toast("Sinkronisasi sedang jalan"); return; }
+  if(!confirm("Hapus SELURUH data di awan, lalu unggah ulang semuanya dari perangkat ini?\n\n"
+    + "Data di perangkat ini tidak diubah. Perangkat lain yang membaca awan akan mengikuti "
+    + "data perangkat ini.")) return;
+  sync.sibuk = true; sync.error = null; segarkanStatusAwan();
+  try{
+    toast("Membersihkan awan…");
+    let dihapus = 0;
+    for(const c of ["employees","shifts","roster","records"]){
+      const snap = await AKAR().collection(c).get();
+      const dok = snap.docs;
+      for(let i = 0; i < dok.length; i += 100){
+        const batch = fb.db.batch();
+        for(const d of dok.slice(i, i + 100)) batch.delete(d.ref);
+        await batch.commit();
+        dihapus += Math.min(100, dok.length - i);
+      }
+    }
+    try{ await AKAR().delete(); }catch(e){}
+    sync.hash = {}; sync.lastPush = 0; saveSync();
+    sync.sibuk = false;
+    toast(`${dihapus} dokumen lama dihapus — mengunggah ulang…`);
+    await dorongKeAwan(true);
+  }catch(e){
+    sync.error = (e.code || "") + (e.message ? " — " + e.message : "");
+    sync.sibuk = false; segarkanStatusAwan();
+    toast("Gagal membersihkan awan: " + (e.code || e.message));
+  }
+}
+
 /* Dipanggil dari save(), jadi setiap perubahan ikut terkirim tanpa perlu
    menyisipkan pemanggilan di tiap tempat penyuntingan. */
 function jadwalkanSync(jeda){
