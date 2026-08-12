@@ -2184,6 +2184,45 @@ function secSetelan(){
   <div class="sect"><h2>Keamanan</h2></div>
   <button class="btn blk" data-act="changepin">Ubah PIN Admin</button>
 
+  <div class="sect"><h2>Sinkronisasi awan</h2><span class="lbl">Tahap 1</span></div>
+  <div class="stat2">
+    <div class="statrow">
+      <span class="dot2 ${fb.siap ? "ok" : fb.error ? "off" : "warn"}"></span>
+      <div class="grow"><div class="statnm">Sambungan Firebase</div>
+        <div class="statv">${fb.siap ? "Siap" : fb.error ? esc(fb.error) : "Memuat…"}</div></div>
+    </div>
+    <div class="statrow">
+      <span class="dot2 ${fb.user ? "ok" : "warn"}"></span>
+      <div class="grow"><div class="statnm">Akun cafe</div>
+        <div class="statv">${fb.user ? esc(fb.user.email) : "Belum masuk"}</div></div>
+    </div>
+    ${fb.user ? `<div class="statrow">
+      <span class="dot2 ok"></span>
+      <div class="grow"><div class="statnm">UID akun</div>
+        <div class="statv" style="overflow-wrap:anywhere">${esc(fb.user.uid)}</div></div>
+    </div>` : ""}
+  </div>
+  ${fb.user ? `
+    <div class="note" style="margin-top:10px">Login berhasil. <b>Kirim UID di atas ke saya</b> —
+      itu yang saya pakai menulis aturan akses Firestore agar hanya akun ini yang boleh
+      membaca dan menulis data cafe Anda.</div>
+    <button class="btn ghost blk" data-act="fbkeluar" style="margin-top:10px">Keluar dari Akun Cafe</button>
+  ` : `
+    <div class="field" style="margin-top:12px"><label for="fbEmail">Email akun cafe</label>
+      <input type="email" id="fbEmail" autocomplete="username" inputmode="email"
+        placeholder="akun yang dibuat di console Firebase"></div>
+    <div class="field"><label for="fbSandi">Sandi</label>
+      <input type="password" id="fbSandi" autocomplete="current-password" placeholder="sandi akun itu"></div>
+    <button class="btn pri blk" data-act="fbmasuk" ${fb.siap ? "" : "disabled"}>Masuk</button>
+    <div class="hint" style="margin-top:8px">Sandi hanya dikirim ke server Firebase Anda sendiri,
+      tidak disimpan di aplikasi ini. Cukup sekali login — sesinya diingat sampai Anda menekan Keluar.</div>
+  `}
+  ${fb.lastAuthError ? `<div class="note warn" style="margin-top:10px">
+    Galat terakhir dari Firebase:<br><span class="mono" style="font-size:11px;overflow-wrap:anywhere">${esc(fb.lastAuthError)}</span></div>` : ""}
+  <div class="hint" style="margin-top:10px">Tahap 1 hanya menguji login. <b>Belum ada data absensi
+    yang dikirim ke awan</b>, dan data di tablet tidak tersentuh. Sinkronisasi menyusul setelah
+    login terbukti jalan.</div>
+
   <div class="sect"><h2>Luring & ketahanan data</h2></div>
   <div class="stat2">
     <div class="statrow">
@@ -2899,6 +2938,8 @@ document.addEventListener("click", async (ev) => {
           <button class="btn pri" data-act="scrim">Tutup</button></div>`);
       break;
     }
+    case "fbmasuk": masukAwan(); break;
+    case "fbkeluar": keluarAwan(); break;
     case "mintapersist": {
       const s = await pastikanPenyimpananPermanen(true);
       render();
@@ -2990,6 +3031,83 @@ function tickClock(){
 }
 
 /* ============================================================
+   SINKRONISASI AWAN — TAHAP 1: login dan status sambungan
+
+   Firebase sengaja dimuat setelah aplikasi tampil, bukan lewat tag skrip
+   di awal berkas. Dengan begitu absensi tidak pernah tertunda atau rusak
+   karena SDK gagal dimuat, dan kios tetap jalan penuh saat internet mati.
+   Belum ada data yang dipindah pada tahap ini.
+   ============================================================ */
+let fb = { siap:false, error:null, user:null, auth:null, memuat:false };
+
+function muatSkrip(src){
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.async = true;
+    s.onload = () => res();
+    s.onerror = () => rej(new Error("gagal memuat " + src));
+    document.head.appendChild(s);
+  });
+}
+async function pasangFirebase(){
+  if(fb.memuat || fb.siap) return;
+  fb.memuat = true;
+  if(!window.isSecureContext){ fb.error = "butuh alamat https"; fb.memuat = false; return; }
+  try{
+    await muatSkrip("vendor/firebase-app-compat.js");
+    await muatSkrip("vendor/firebase-auth-compat.js");
+    await muatSkrip("firebase-config.js");
+    if(!window.firebase) throw new Error("SDK Firebase tidak termuat");
+    if(!window.FIREBASE_CONFIG) throw new Error("firebase-config.js tidak termuat");
+    if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    fb.auth = firebase.auth();
+    try{ await fb.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
+    fb.auth.onAuthStateChanged(u => { fb.user = u; segarkanStatusAwan(); });
+    fb.siap = true; fb.error = null;
+  }catch(e){
+    fb.error = e.message;
+  }
+  fb.memuat = false;
+  segarkanStatusAwan();
+}
+const GALAT_AUTH = {
+  "auth/invalid-email": "Format email tidak sah",
+  "auth/user-not-found": "Akun itu tidak ada di proyek ini",
+  "auth/wrong-password": "Sandi salah",
+  "auth/invalid-credential": "Email atau sandi salah",
+  "auth/invalid-login-credentials": "Email atau sandi salah",
+  "auth/too-many-requests": "Terlalu banyak percobaan — tunggu beberapa menit",
+  "auth/network-request-failed": "Tidak ada jaringan",
+  "auth/operation-not-allowed": "Email/Password belum diaktifkan di console Firebase",
+  "auth/user-disabled": "Akun itu dinonaktifkan"
+};
+async function masukAwan(){
+  const email = (el("fbEmail") || {}).value;
+  const sandi = (el("fbSandi") || {}).value;
+  if(!email || !sandi){ toast("Email dan sandi harus diisi"); return; }
+  if(!fb.siap){ toast("Firebase belum siap — " + (fb.error || "coba lagi")); return; }
+  try{
+    toast("Menghubungi Firebase…");
+    await fb.auth.signInWithEmailAndPassword(email.trim(), sandi);
+    if(el("fbSandi")) el("fbSandi").value = "";       // jangan tinggalkan sandi di DOM
+    render();
+    toast("Berhasil masuk");
+  }catch(e){
+    fb.lastAuthError = (e.code || "") + (e.message ? " — " + e.message : "");
+    render();
+    toast(GALAT_AUTH[e.code] || ("Gagal masuk: " + (e.code || e.message)));
+  }
+}
+async function keluarAwan(){
+  if(!fb.siap) return;
+  try{ await fb.auth.signOut(); render(); toast("Sudah keluar"); }
+  catch(e){ toast("Gagal keluar: " + e.message); }
+}
+function segarkanStatusAwan(){
+  if(activeTab === "admin" && adminSec === "setelan" && adminUnlocked && !el("layer").innerHTML) render();
+}
+
+/* ============================================================
    LURING & KETAHANAN DATA
    ============================================================ */
 let swReg = null;
@@ -3049,6 +3167,7 @@ setInterval(tickClock, 1000);
 pruneOld(true);
 pasangServiceWorker();
 pastikanPenyimpananPermanen(false).then(segarkanStatusLuring);
+pasangFirebase();
 document.addEventListener("visibilitychange", () => {
   if(!document.hidden && activeTab === "absen" && !cam && !el("layer").innerHTML) render();
 });

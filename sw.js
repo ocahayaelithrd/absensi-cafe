@@ -9,8 +9,10 @@
    Untuk perubahan index.html tidak perlu diapa-apakan: pembaruan latar
    belakang sudah menyegarkan isinya sendiri. */
 
-const VERSI = "absensi-cafe-v1";
-const ASET = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const VERSI = "absensi-cafe-v2";
+const ASET = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png",
+              "./firebase-config.js",
+              "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js"];
 
 /* Semua entri disimpan dengan kunci pathname saja, supaya tambahan
    query string (mis. ?cb= atau parameter dari pintasan layar utama)

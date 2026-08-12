@@ -215,6 +215,27 @@ Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
 
 Letakkan HP di dudukan permanen di dekat kasir.
 
+## Sinkronisasi awan (dalam pengerjaan)
+
+Agar admin bisa membuka rekap dari PC, data akan dicerminkan ke Firebase. Dibangun
+bertahap supaya kegagalan di satu tahap tidak merusak absensi yang sedang jalan.
+
+- **Tahap 1 — selesai.** Login akun cafe dan panel status di **Setelan →
+  Sinkronisasi awan**. Belum ada data yang dikirim.
+- Tahap 2 — cermin satu arah dari tablet ke Firestore.
+- Tahap 3 — tampilan telaah di PC.
+- Tahap 4 — koreksi dari PC ikut kembali ke tablet.
+
+SDK Firebase disimpan di [`vendor/`](vendor) dan dimuat dari repo, bukan dari CDN,
+serta ikut di-cache service worker — supaya aplikasi tetap terbuka saat internet
+mati. SDK juga dimuat **setelah** aplikasi tampil, sehingga absensi tidak pernah
+tertunda atau rusak kalau SDK gagal dimuat.
+
+Nilai di [`firebase-config.js`](firebase-config.js) memang publik; `apiKey` Firebase
+bukan kunci rahasia melainkan pengenal proyek. Pengaman datanya dua: pendaftaran
+mandiri dimatikan di console Firebase, dan aturan akses Firestore hanya
+mengizinkan akun cafe yang sah.
+
 ## Luring & ketahanan data
 
 Aplikasi memasang **service worker** ([`sw.js`](sw.js)) yang menyimpan berkasnya
