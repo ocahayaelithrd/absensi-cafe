@@ -517,6 +517,7 @@ function save(){
   saveT = setTimeout(()=>{
     try{ localStorage.setItem(LS, JSON.stringify(db)); }
     catch(e){ storageOK = false; toast("Penyimpanan penuh — hapus foto lama di Pengaturan"); }
+    if(typeof jadwalkanSync === "function") jadwalkanSync();
   },60);
 }
 
@@ -2202,12 +2203,35 @@ function secSetelan(){
         <div class="statv" style="overflow-wrap:anywhere">${esc(fb.user.uid)}</div></div>
     </div>` : ""}
   </div>
-  ${fb.user ? `
-    <div class="note" style="margin-top:10px">Login berhasil. <b>Kirim UID di atas ke saya</b> —
-      itu yang saya pakai menulis aturan akses Firestore agar hanya akun ini yang boleh
-      membaca dan menulis data cafe Anda.</div>
-    <button class="btn ghost blk" data-act="fbkeluar" style="margin-top:10px">Keluar dari Akun Cafe</button>
-  ` : `
+  ${fb.user ? (() => {
+    const tertunda = hitungTertunda();
+    return `
+    <div class="stat2" style="margin-top:1px">
+      <div class="statrow">
+        <span class="dot2 ${sync.sibuk ? "warn" : sync.error ? "off" : tertunda ? "warn" : "ok"}"></span>
+        <div class="grow"><div class="statnm">Cermin ke awan</div>
+          <div class="statv">${sync.sibuk ? "Mengirim…"
+            : tertunda ? `${tertunda} dokumen menunggu dikirim`
+            : "Semua sudah sama"}</div></div>
+      </div>
+      <div class="statrow">
+        <span class="dot2 ${sync.lastPush ? "ok" : "warn"}"></span>
+        <div class="grow"><div class="statnm">Terakhir tersinkron</div>
+          <div class="statv">${sync.lastPush
+            ? new Date(sync.lastPush).toLocaleString("id-ID") : "Belum pernah"}</div></div>
+      </div>
+    </div>
+    ${sync.error ? `<div class="note warn" style="margin-top:10px">Galat sinkronisasi:<br>
+      <span class="mono" style="font-size:11px;overflow-wrap:anywhere">${esc(sync.error)}</span></div>` : ""}
+    ${fb.persistErr ? `<div class="hint" style="margin-top:8px">Catatan: penyimpanan luring Firestore
+      tidak aktif (${esc(fb.persistErr)}). Sinkronisasi tetap jalan saat ada internet.</div>` : ""}
+    <div class="btnrow" style="margin-top:10px">
+      <button class="btn pri" data-act="fbsync" ${sync.sibuk ? "disabled" : ""}>Sinkronkan Sekarang</button>
+      <button class="btn ghost" data-act="fbkeluar">Keluar</button>
+    </div>
+    <div class="hint" style="margin-top:8px">Tablet adalah sumber kebenaran; awan hanya salinan.
+      Perubahan terkirim otomatis beberapa detik setelah terjadi, dan mengendap dulu bila internet mati.</div>`;
+  })() : `
     <div class="field" style="margin-top:12px"><label for="fbEmail">Email akun cafe</label>
       <input type="email" id="fbEmail" autocomplete="username" inputmode="email"
         placeholder="akun yang dibuat di console Firebase"></div>
@@ -2217,11 +2241,8 @@ function secSetelan(){
     <div class="hint" style="margin-top:8px">Sandi hanya dikirim ke server Firebase Anda sendiri,
       tidak disimpan di aplikasi ini. Cukup sekali login — sesinya diingat sampai Anda menekan Keluar.</div>
   `}
-  ${fb.lastAuthError ? `<div class="note warn" style="margin-top:10px">
+  ${fb.lastAuthError && !fb.user ? `<div class="note warn" style="margin-top:10px">
     Galat terakhir dari Firebase:<br><span class="mono" style="font-size:11px;overflow-wrap:anywhere">${esc(fb.lastAuthError)}</span></div>` : ""}
-  <div class="hint" style="margin-top:10px">Tahap 1 hanya menguji login. <b>Belum ada data absensi
-    yang dikirim ke awan</b>, dan data di tablet tidak tersentuh. Sinkronisasi menyusul setelah
-    login terbukti jalan.</div>
 
   <div class="sect"><h2>Luring & ketahanan data</h2></div>
   <div class="stat2">
@@ -2940,6 +2961,7 @@ document.addEventListener("click", async (ev) => {
     }
     case "fbmasuk": masukAwan(); break;
     case "fbkeluar": keluarAwan(); break;
+    case "fbsync": dorongKeAwan(true); break;
     case "mintapersist": {
       const s = await pastikanPenyimpananPermanen(true);
       render();
@@ -3056,13 +3078,21 @@ async function pasangFirebase(){
   try{
     await muatSkrip("vendor/firebase-app-compat.js");
     await muatSkrip("vendor/firebase-auth-compat.js");
+    await muatSkrip("vendor/firebase-firestore-compat.js");
     await muatSkrip("firebase-config.js");
     if(!window.firebase) throw new Error("SDK Firebase tidak termuat");
     if(!window.FIREBASE_CONFIG) throw new Error("firebase-config.js tidak termuat");
     if(!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
     fb.auth = firebase.auth();
     try{ await fb.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
-    fb.auth.onAuthStateChanged(u => { fb.user = u; segarkanStatusAwan(); });
+    fb.db = firebase.firestore();
+    // tulisan mengendap di HP saat internet mati lalu tersinkron sendiri
+    try{ await fb.db.enablePersistence({ synchronizeTabs:false }); }
+    catch(e){ fb.persistErr = e.code || e.message; }
+    fb.auth.onAuthStateChanged(u => {
+      fb.user = u; segarkanStatusAwan();
+      if(u) jadwalkanSync(1500);
+    });
     fb.siap = true; fb.error = null;
   }catch(e){
     fb.error = e.message;
@@ -3105,6 +3135,120 @@ async function keluarAwan(){
 }
 function segarkanStatusAwan(){
   if(activeTab === "admin" && adminSec === "setelan" && adminUnlocked && !el("layer").innerHTML) render();
+}
+
+/* ============================================================
+   TAHAP 2 — cermin satu arah: tablet mendorong ke Firestore
+
+   Sumber kebenaran tetap penyimpanan di tablet. Awan hanya salinan,
+   sehingga kegagalan sinkronisasi tidak pernah mengganggu absensi.
+   Perubahan dideteksi lewat sidik jari isi dokumen, jadi tidak ada
+   satu pun tempat penyuntingan yang perlu diubah untuk mendukungnya.
+   ============================================================ */
+const LS_SYNC = "absensi_cafe_sync";
+const AKAR = () => fb.db.collection("cafe").doc("main");
+let sync = { hash:{}, lastPush:0, error:null, sibuk:false, tertunda:null, timer:null };
+
+function loadSync(){
+  try{ const r = localStorage.getItem(LS_SYNC);
+    if(r){ const p = JSON.parse(r); sync.hash = p.hash || {}; sync.lastPush = p.lastPush || 0; }
+  }catch(e){}
+}
+function saveSync(){
+  try{ localStorage.setItem(LS_SYNC, JSON.stringify({ hash:sync.hash, lastPush:sync.lastPush })); }
+  catch(e){ /* penuh: sinkronisasi akan mengulang, tidak merusak apa pun */ }
+}
+const sidik = (s) => { let h = 0x811c9dc5;
+  for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
+  return h.toString(36); };
+
+/* Daftar dokumen yang seharusnya ada di awan, beserta sidik jarinya.
+   Foto belum dibaca di sini — hanya diambil untuk dokumen yang perlu dikirim,
+   supaya sinkronisasi tidak membaca ribuan foto setiap kali dijalankan. */
+function petaDok(){
+  const peta = {};
+  peta["settings"] = { jenis:"settings", isi:{ settings: db.settings } };
+  for(const e of db.employees)  peta["emp/"   + e.id] = { jenis:"emp",    id:e.id, isi:e };
+  for(const s of db.shifts)     peta["shift/" + s.id] = { jenis:"shift",  id:s.id, isi:s };
+  for(const k of Object.keys(db.roster || {}))
+                                peta["roster/"+ k]    = { jenis:"roster", id:k,    isi:db.roster[k] };
+  for(const r of db.records)    peta["rec/"   + r.id] = { jenis:"rec",    id:r.id, isi:r };
+  for(const k of Object.keys(peta)) peta[k].sidik = sidik(JSON.stringify(peta[k].isi));
+  return peta;
+}
+function hitungTertunda(){
+  if(!fb.db || !fb.user) return null;
+  const peta = petaDok();
+  let n = 0;
+  for(const k of Object.keys(peta)) if(sync.hash[k] !== peta[k].sidik) n++;
+  for(const k of Object.keys(sync.hash)) if(!peta[k]) n++;      // yang perlu dihapus di awan
+  return n;
+}
+function refDok(d){
+  if(d.jenis === "settings") return AKAR();
+  const koleksi = { emp:"employees", shift:"shifts", roster:"roster", rec:"records" }[d.jenis];
+  return AKAR().collection(koleksi).doc(d.id);
+}
+
+async function dorongKeAwan(manual){
+  if(!fb.siap || !fb.db || !fb.user){ if(manual) toast("Belum masuk ke akun cafe"); return; }
+  if(sync.sibuk){ if(manual) toast("Sinkronisasi sedang jalan"); return; }
+  sync.sibuk = true; sync.error = null; segarkanStatusAwan();
+  try{
+    const peta = petaDok();
+    const tulis = Object.keys(peta).filter(k => sync.hash[k] !== peta[k].sidik);
+    const hapus = Object.keys(sync.hash).filter(k => !peta[k]);
+    if(!tulis.length && !hapus.length){
+      sync.lastPush = Date.now(); saveSync();
+      if(manual) toast("Sudah sama dengan awan");
+    }else{
+      const stempel = firebase.firestore.FieldValue.serverTimestamp();
+      const potong = 100;                     // jauh di bawah batas 500 operasi per batch
+      for(let i = 0; i < tulis.length; i += potong){
+        const batch = fb.db.batch();
+        for(const k of tulis.slice(i, i + potong)){
+          const d = peta[k];
+          let data;
+          if(d.jenis === "settings")      data = { settings: db.settings, updatedAt: stempel };
+          else if(d.jenis === "roster")   data = { hari: d.isi, updatedAt: stempel };
+          else if(d.jenis === "rec"){
+            data = Object.assign({}, d.isi, { updatedAt: stempel });
+            // foto ditanam di dokumennya, sekitar 5 KB per lembar
+            if(d.isi.hasIn)  data.fotoMasuk  = (await photoGet(d.isi.id + ":in"))  || null;
+            if(d.isi.hasOut) data.fotoPulang = (await photoGet(d.isi.id + ":out")) || null;
+          }
+          else data = Object.assign({}, d.isi, { updatedAt: stempel });
+          batch.set(refDok(d), data, { merge:false });
+        }
+        await batch.commit();
+        for(const k of tulis.slice(i, i + potong)) sync.hash[k] = peta[k].sidik;
+        saveSync();
+      }
+      for(let i = 0; i < hapus.length; i += potong){
+        const batch = fb.db.batch();
+        for(const k of hapus.slice(i, i + potong)){
+          const [jenis, ...sisa] = k.split("/");
+          batch.delete(refDok({ jenis, id: sisa.join("/") }));
+        }
+        await batch.commit();
+        for(const k of hapus.slice(i, i + potong)) delete sync.hash[k];
+        saveSync();
+      }
+      sync.lastPush = Date.now(); saveSync();
+      if(manual) toast(`Tersinkron · ${tulis.length} dikirim, ${hapus.length} dihapus`);
+    }
+  }catch(e){
+    sync.error = (e.code || "") + (e.message ? " — " + e.message : "");
+    if(manual) toast("Gagal sinkron: " + (e.code || e.message));
+  }
+  sync.sibuk = false; segarkanStatusAwan();
+}
+/* Dipanggil dari save(), jadi setiap perubahan ikut terkirim tanpa perlu
+   menyisipkan pemanggilan di tiap tempat penyuntingan. */
+function jadwalkanSync(jeda){
+  if(!fb.siap || !fb.user) return;
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(() => dorongKeAwan(false), jeda || 5000);
 }
 
 /* ============================================================
@@ -3159,6 +3303,7 @@ const LABEL_PERSIST = { aktif:"Aktif — data dilindungi", belum:"Belum diberika
                         ditolak:"Ditolak browser", "tidak-didukung":"Tidak didukung browser ini" };
 
 /* ---------- mulai ---------- */
+loadSync();
 loadDB();
 recalcAll();
 render();

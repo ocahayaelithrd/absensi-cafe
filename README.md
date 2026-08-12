@@ -221,10 +221,30 @@ Agar admin bisa membuka rekap dari PC, data akan dicerminkan ke Firebase. Dibang
 bertahap supaya kegagalan di satu tahap tidak merusak absensi yang sedang jalan.
 
 - **Tahap 1 — selesai.** Login akun cafe dan panel status di **Setelan →
-  Sinkronisasi awan**. Belum ada data yang dikirim.
-- Tahap 2 — cermin satu arah dari tablet ke Firestore.
+  Sinkronisasi awan**.
+- **Tahap 2 — selesai.** Cermin satu arah dari tablet ke Firestore, foto ikut.
 - Tahap 3 — tampilan telaah di PC.
 - Tahap 4 — koreksi dari PC ikut kembali ke tablet.
+
+Tablet tetap sumber kebenaran; awan hanya salinan, sehingga kegagalan
+sinkronisasi tidak pernah mengganggu absensi. Perubahan dideteksi lewat sidik
+jari isi dokumen, jadi tidak ada satu pun tempat penyuntingan yang perlu diubah
+untuk mendukungnya, dan tidak ada foto yang dibaca ulang kecuali dokumennya
+memang perlu dikirim.
+
+Struktur di Firestore:
+
+```
+cafe/main                  pengaturan
+cafe/main/employees/{id}   karyawan, termasuk PIN
+cafe/main/shifts/{id}      pola shift
+cafe/main/roster/{tanggal} peta karyawan → shift
+cafe/main/records/{id}     absen, foto masuk & pulang ditanam di dalamnya
+```
+
+Aksesnya dikunci ke satu UID lewat aturan Firestore, dan pendaftaran mandiri
+dimatikan di console — jadi meski `firebase-config.js` publik, data cafe tidak
+bisa dibaca orang lain.
 
 SDK Firebase disimpan di [`vendor/`](vendor) dan dimuat dari repo, bukan dari CDN,
 serta ikut di-cache service worker — supaya aplikasi tetap terbuka saat internet
