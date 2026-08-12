@@ -732,6 +732,43 @@ function mapsLink(lat, lon){ return `https://www.google.com/maps?q=${lat},${lon}
 const FACE_BASE = 0.62;            // dasar kemiripan HOG antar-wajah apa pun
 const toPct = dot => Math.round(Math.max(0, Math.min(1, (dot - FACE_BASE)/(1 - FACE_BASE))) * 100);
 
+/* Deskriptor HOG tidak kebal terhadap skala: wajah yang sama, difoto dari
+   jarak berbeda, menghasilkan pola gradien yang berbeda. Karena itu jarak
+   berdiri saat absen harus mirip dengan saat pendaftaran. Nilai berikut
+   dinaikkan bila cara mengukur bingkai berubah, agar wajah lama yang tidak
+   sebanding tidak dipakai membandingkan dan diminta daftar ulang. */
+const TPL_VER = 2;
+function templatesOf(emp){
+  if(!emp || !emp.templates || !emp.templates.length) return null;
+  if((emp.tplVer || 1) !== TPL_VER) return null;      // dari versi lama, tidak sebanding
+  return emp.templates;
+}
+function perluDaftarUlang(emp){
+  return !!(emp && emp.templates && emp.templates.length && (emp.tplVer || 1) !== TPL_VER);
+}
+
+/* Alih-alih memaksa karyawan berdiri persis sejauh saat mendaftar, pencocokan
+   dibuat kebal skala: saat absen, wajah dibandingkan pada beberapa perbesaran
+   dan pergeseran tegak, lalu diambil yang paling cocok. Perbesaran pemenang
+   sekaligus memberi tahu apakah orangnya berdiri lebih jauh atau lebih dekat
+   daripada saat mendaftar — sinyal yang jauh lebih andal daripada menebak
+   warna kulit, yang mudah tertipu latar kayu dan dinding hangat. */
+/* Tujuh perbesaran, tanpa geseran tegak. Pengukuran menunjukkan geseran tegak
+   tidak menambah akurasi sama sekali — oval panduan sudah cukup menyamakan
+   posisi — tapi melipatgandakan biaya sekaligus memperbesar peluang orang lain
+   ikut lolos, karena skor diambil dari kandidat terbaik. */
+const SKALA = [0.45, 0.55, 0.7, 0.85, 1.0, 1.2, 1.45];
+function kotakVarian(box, skala, W, H){
+  return clampBox(box.x + box.w/2, box.y + box.h/2, box.w*skala, W, H);
+}
+/* Kumpulan deskriptor satu tangkapan pada berbagai perbesaran. Potongan yang
+   lebih kecil berarti memperbesar wajah, yaitu mengimbangi orang yang berdiri
+   lebih jauh. */
+function piramida(canvas, box){
+  return SKALA.map(s => ({ s,
+    vec: descriptor(canvas, kotakVarian(box, s, canvas.width, canvas.height)).vec }));
+}
+
 let detector = null, detectorReady = false;
 function getDetector(){
   if(detectorReady) return detector;
@@ -820,11 +857,21 @@ function cosine(a,b){
   let s = 0; for(let i=0;i<a.length;i++) s += a[i]*b[i];
   return s;
 }
-function matchScore(vec, emp){
-  if(!emp.templates || !emp.templates.length) return null;
-  let best = -1;
-  for(const t of emp.templates) best = Math.max(best, cosine(vec, t));
-  return toPct(best);
+/* Cari kecocokan terbaik di seluruh piramida. Mengembalikan skor sekaligus
+   skala pemenang, supaya bisa dijelaskan kalau orangnya berdiri terlalu jauh. */
+function cocokTerbaik(vecs, emp){
+  const tpl = templatesOf(emp);
+  if(!tpl) return null;
+  let best = -1, skala = 1;
+  for(const v of vecs) for(const t of tpl){
+    const d = cosine(v.vec, t);
+    if(d > best){ best = d; skala = v.s; }
+  }
+  return { skor: toPct(best), skala };
+}
+function matchScore(vecs, emp){
+  const r = cocokTerbaik(vecs, emp);
+  return r ? r.skor : null;
 }
 
 /* ---------- toast ---------- */
@@ -881,7 +928,9 @@ function pinKey(k){
    KAMERA
    ============================================================ */
 let cam = null;
-const CAM_SIZE = 480;
+const CAM_SIZE = 640;      // makin besar, makin banyak detail wajah untuk deskriptor
+const FOTO_SIZE = 360;     // foto bukti yang disimpan
+const FOTO_Q = 0.72;
 
 async function openCam(opts){
   // opts: {mode:'absen'|'enroll'|'test', empId, action:'masuk'|'pulang'}
@@ -914,14 +963,15 @@ async function openCam(opts){
   const cbody = el("cbody");
   try{
     cam.stream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:"user", width:{ideal:720}, height:{ideal:720} }, audio:false });
+      video:{ facingMode:"user", width:{ideal:1280}, height:{ideal:1280} }, audio:false });
     const v = el("vid");
     v.srcObject = cam.stream;
     await v.play().catch(()=>{});
     cstat(getDetector() ? "Posisikan wajah di dalam oval" : "Posisikan wajah di dalam oval, lalu tekan Ambil Foto");
     cbody.innerHTML = `<div class="btnrow"><button class="btn pri blk" data-act="shoot">Ambil Foto</button></div>
       ${opts.mode === "enroll" ? shotsHTML() : ""}`;
-    if(getDetector()) cam.timer = setInterval(tick, 350);
+    // panduan jarak tetap jalan walau perangkat tidak punya FaceDetector
+    cam.timer = setInterval(tick, 350);
   }catch(e){
     cam.noStream = true;
     el("stage").innerHTML = `<div style="position:absolute;inset:0;display:grid;place-items:center;
@@ -992,6 +1042,7 @@ async function tick(){
   const r = await detectBox(c);
   const oval = el("oval");
   if(!oval) return;
+
   if(r.detected){
     cam.hits++;
     oval.classList.add("lock");
@@ -999,7 +1050,10 @@ async function tick(){
     if(cam.hits >= 3){ cam.counting = true; countdown(3); }
   }else{
     cam.hits = 0; oval.classList.remove("lock");
-    cstat("Posisikan wajah di dalam oval");
+    // tanpa FaceDetector tidak ada yang bisa diukur andal dari satu bingkai,
+    // jadi cukup arahkan posisinya dan biarkan tombol Ambil Foto yang dipakai
+    cstat(r.detected === false ? "Posisikan wajah di dalam oval"
+                               : "Isi oval dengan wajah, lalu tekan Ambil Foto");
   }
 }
 function countdown(n){
@@ -1039,10 +1093,14 @@ async function capture(canvas, fromFile){
 
   const r = await detectBox(canvas);
   const d = descriptor(canvas, r.box);
-  const photo = shrink(canvas, 240, 0.62);
+  // pendaftaran memakai deskriptor dasar; absen dibandingkan lintas skala
+  const vecs = cam.mode === "enroll" ? null : piramida(canvas, r.box);
+  const photo = shrink(canvas, FOTO_SIZE, FOTO_Q);
 
+  // pratinjau memakai tangkapan resolusi penuh, bukan foto simpanan yang
+  // diperkecil, supaya tidak terlihat kabur saat direntang di layar tablet
   const stage = el("stage");
-  stage.innerHTML = `<img class="shot" src="${photo}" alt="Foto absen">`;
+  stage.innerHTML = `<img class="shot" src="${canvas.toDataURL("image/jpeg", 0.92)}" alt="Foto absen">`;
 
   if(d.brightness < 0.2){
     cstat("<b>Foto terlalu gelap</b> — nyalakan lampu, lalu ulangi");
@@ -1052,7 +1110,7 @@ async function capture(canvas, fromFile){
     cstat(r.detected === null ? "Foto diambil" : "<b>Wajah terdeteksi</b>");
   }
 
-  cam.last = { vec:d.vec, photo, brightness:d.brightness, detected:r.detected };
+  cam.last = { vec:d.vec, vecs, photo, brightness:d.brightness, detected:r.detected };
 
   if(cam.mode === "enroll")      renderEnroll();
   else if(cam.mode === "test")   renderTest();
@@ -1085,6 +1143,7 @@ function keepShot(){
     const emp = db.employees.find(e => e.id === cam.empId);
     if(emp){
       emp.templates = cam.shots.map(s => s.vec);
+      emp.tplVer = TPL_VER;
       emp.avatar = cam.shots[0].photo;
       save();
     }
@@ -1100,14 +1159,21 @@ function keepShot(){
 let cam0EmpId = null;
 
 function renderTest(){
-  const scored = db.employees.filter(e => e.templates && e.templates.length)
-    .map(e => ({ e, s: matchScore(cam.last.vec, e) }))
+  const scored = db.employees.filter(e => templatesOf(e))
+    .map(e => ({ e, c: cocokTerbaik(cam.last.vecs, e) }))
+    .map(x => ({ e:x.e, s:x.c.skor, skala:x.c.skala }))
     .sort((a,b) => b.s - a.s);
   const th = Number(db.settings.faceThreshold);
+  const perlu = db.employees.filter(perluDaftarUlang).length;
   el("cbody").innerHTML = `
     <div class="cstat" style="padding:4px 0 10px">Ambang saat ini: <b>${th}%</b></div>
+    ${perlu ? `<div class="cstat" style="padding:0 0 10px">${perlu} karyawan belum didaftarkan
+      ulang dengan pengukuran baru, jadi tidak ikut dibandingkan.</div>` : ""}
     ${scored.length ? `<ul class="rank">${scored.map(x =>
-      `<li><span>${esc(x.e.name)}</span><b style="color:${x.s>=th?"#3FC486":"#9AA697"}">${x.s}%</b></li>`).join("")}</ul>`
+      `<li><span>${esc(x.e.name)}</span>
+        <span class="accnote" style="margin:0 8px 0 auto">${
+          x.skala <= 0.7 ? "lebih jauh" : x.skala >= 1.2 ? "lebih dekat" : "jarak pas"}</span>
+        <b style="margin:0;color:${x.s>=th?"#3FC486":"#9AA697"}">${x.s}%</b></li>`).join("")}</ul>`
       : `<div class="cstat">Belum ada karyawan dengan wajah terdaftar.</div>`}
     <div class="btnrow" style="margin-top:14px">
       <button class="btn" data-act="retake">Ulangi</button>
@@ -1115,12 +1181,30 @@ function renderTest(){
     </div>`;
 }
 
+/* Kecocokan rendah hampir selalu punya sebab yang bisa diperbaiki di tempat.
+   Skala pemenang dari piramida memberi tahu jarak berdiri secara terukur:
+   kalau yang paling cocok adalah potongan yang diperbesar, berarti wajahnya
+   tampil lebih kecil daripada saat mendaftar — orangnya berdiri terlalu jauh. */
+function sebabTidakCocok(emp, last, cocok){
+  const petunjuk = [];
+  if(last.brightness < 0.3) petunjuk.push("cahaya kurang");
+  if(cocok){
+    // potongan kecil menang berarti wajah harus diperbesar dulu: orangnya jauh
+    if(cocok.skala <= 0.7) petunjuk.push("<b>berdiri lebih jauh</b> daripada saat mendaftar — coba maju");
+    else if(cocok.skala >= 1.2) petunjuk.push("<b>berdiri lebih dekat</b> daripada saat mendaftar — coba mundur");
+  }
+  if(last.detected === false) petunjuk.push("wajah tidak terdeteksi di dalam oval");
+  if(!petunjuk.length) petunjuk.push("penampilan berubah, atau memang orang lain");
+  return `<div class="accnote" style="margin-top:9px;line-height:1.5">
+    Kemungkinan sebab: ${petunjuk.join(" · ")}</div>`;
+}
+
 function renderVerify(){
   const emp = db.employees.find(e => e.id === cam.empId);
   const mode = db.settings.faceMode;
   const th = Number(db.settings.faceThreshold);
-  const hasTpl = emp && emp.templates && emp.templates.length;
-  const score = (mode === "off" || !hasTpl) ? null : matchScore(cam.last.vec, emp);
+  const cocok = mode === "off" ? null : cocokTerbaik(cam.last.vecs, emp);
+  const score = cocok ? cocok.skor : null;
   cam.score = score;
   const pass = score === null ? true : score >= th;
 
@@ -1128,11 +1212,13 @@ function renderVerify(){
   if(score === null){
     block = `<div class="cstat" style="padding:10px 0">${
       mode === "off" ? "Verifikasi wajah dinonaktifkan — foto tetap disimpan sebagai bukti."
-                     : "Wajah belum didaftarkan untuk karyawan ini — foto tetap disimpan sebagai bukti."}</div>`;
+      : perluDaftarUlang(emp) ? "Wajah perlu didaftarkan ulang dengan cara pengukuran yang baru — foto tetap disimpan sebagai bukti."
+      : "Wajah belum didaftarkan untuk karyawan ini — foto tetap disimpan sebagai bukti."}</div>`;
   }else{
     block = `<div class="score ${pass?"pass":"fail"}">
       <div class="pct">${score}%</div>
-      <div class="vd">${pass ? "Wajah cocok" : "Wajah tidak cocok"}</div></div>`;
+      <div class="vd">${pass ? "Wajah cocok" : "Wajah tidak cocok"}</div>
+      ${!pass ? sebabTidakCocok(emp, cam.last, cocok) : ""}</div>`;
   }
 
   // --- lokasi ---
@@ -1842,7 +1928,8 @@ function secKaryawan(){
           ${(() => { const sh = shiftOn(e, dkey());
              return sh ? `hari ini ${esc(sh.name)}` : (isLibur(e, dkey()) ? "hari ini libur" : "hari ini belum dijadwalkan"); })()}</div>
       </div>
-      <span class="chip ${n ? "c-kerja" : "c-belum"}">${n ? n + " foto" : "belum"}</span>
+      <span class="chip ${perluDaftarUlang(e) ? "c-telat" : n ? "c-kerja" : "c-belum"}">${
+        perluDaftarUlang(e) ? "daftar ulang" : n ? n + " foto" : "belum"}</span>
     </button>`;
   }).join("")}</div>` : `<div class="card"><div class="empty">Belum ada karyawan.</div></div>`}`;
 }
@@ -1865,8 +1952,13 @@ function openEmpForm(id){
       <button class="sw" id="fa" data-act="togactive" aria-pressed="${e ? e.active !== false : true}" aria-label="Karyawan aktif"></button></div>
     <hr class="dash" style="margin:12px 0 14px">
     <div class="field"><label>Pendaftaran wajah</label>
-      <span class="hint">${n ? `${n} foto terdaftar. Daftar ulang bila penampilan berubah (mis. potong rambut, pakai kacamata) atau posisi HP dipindah.`
-        : "Belum ada foto. Daftarkan 3 foto agar sistem bisa mencocokkan wajah saat absen."}</span></div>
+      <span class="hint">${
+        e && perluDaftarUlang(e) ? `<b>Perlu didaftarkan ulang.</b> ${n} foto lama dibuat dengan cara
+          pengukuran versi sebelumnya sehingga tidak sebanding, dan untuk sementara tidak dipakai
+          mencocokkan.`
+        : n ? `${n} foto terdaftar. Daftar ulang bila penampilan berubah (mis. potong rambut, pakai kacamata) atau posisi HP dipindah.`
+        : "Belum ada foto. Daftarkan 3 foto agar sistem bisa mencocokkan wajah saat absen."}
+        Saat mendaftar, berdirilah pada jarak yang sama seperti nanti karyawan absen sehari-hari.</span></div>
     <div class="btnrow" style="margin-bottom:12px">
       <button class="btn" data-act="enroll" data-id="${e ? e.id : ""}" ${e ? "" : "disabled"}>${n ? "Daftar Ulang" : "Daftarkan Wajah"}</button>
       <button class="btn" data-act="testface" ${db.employees.some(x => x.templates && x.templates.length) ? "" : "disabled"}>Uji Wajah</button>

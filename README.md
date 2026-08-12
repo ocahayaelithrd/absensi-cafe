@@ -142,6 +142,23 @@ dengan tiga foto yang didaftarkan per karyawan memakai kemiripan kosinus.
 Deteksi wajah memakai `FaceDetector` bawaan Chrome Android bila tersedia, dengan
 oval panduan sebagai cadangan.
 
+**Kebal jarak berdiri.** Deskriptor HOG peka terhadap skala: wajah yang sama,
+difoto dari jarak berbeda, menghasilkan pola gradien yang berbeda jauh. Karena
+itu setiap absen dibandingkan pada tujuh perbesaran sekaligus, lalu diambil yang
+paling cocok. Perbesaran pemenang juga dipakai menjelaskan hasilnya — kalau yang
+menang adalah potongan yang diperbesar, berarti orangnya berdiri lebih jauh
+daripada saat mendaftar, dan aplikasi menyarankan maju.
+
+Pengukuran dengan wajah sintetis pada empat jarak berbeda: tanpa pembandingan
+lintas skala, orang yang benar bisa jatuh ke 0–15%; dengan pembandingan, hasilnya
+74–100%, sementara tiga wajah berbeda tetap di 44–54%. Geseran tegak sempat
+dicoba tetapi tidak menambah akurasi sama sekali dan justru memperbesar peluang
+orang lain ikut lolos, jadi tidak dipakai.
+
+Cara pengukuran ini tidak sebanding dengan versi sebelumnya. Wajah yang
+didaftarkan sebelum perubahan ditandai **daftar ulang** dan tidak dipakai
+membandingkan, supaya tidak menghasilkan skor yang menyesatkan.
+
 Ini **verifikasi**, bukan pengenalan wajah tingkat keamanan tinggi. Akurasinya
 bergantung pada posisi HP dan pencahayaan yang konsisten. Tiga mode tersedia di
 Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
