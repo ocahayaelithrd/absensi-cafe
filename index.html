@@ -421,7 +421,8 @@ const LS = "absensi_cafe_v1";
 let storageOK = true;
 const DEFAULTS = {
   settings:{ cafeName:"Absensi Cafe", pin:"1234", tolerance:10, minOvertime:30,
-             faceMode:"warn", faceThreshold:65, retention:60,
+             pinMode:"wajib",
+             faceMode:"off", faceThreshold:65, retention:60,
              fineEnabled:true,
              fineTiers:[ {upTo:15, amount:5000}, {upTo:30, amount:15000}, {upTo:null, amount:30000} ],
              geoMode:"off", geoLat:null, geoLon:null, geoRadius:100,
@@ -446,6 +447,11 @@ function loadDB(){
       db.records   = Array.isArray(p.records)  ? p.records  : [];
       db.shifts    = Array.isArray(p.shifts) && p.shifts.length ? p.shifts : [];
       db.roster    = (p.roster && typeof p.roster === "object") ? p.roster : {};
+      /* Pencocokan wajah terbukti tidak andal di lapangan: wajah yang sama
+         ditolak begitu orangnya berdiri sedikit bergeser atau lebih tinggi.
+         Pemasangan lama dialihkan ke PIN pribadi, dan verifikasi wajah
+         dimatikan sekali saja saat naik versi. */
+      if(p.settings && p.settings.pinMode === undefined) db.settings.faceMode = "off";
       migrateToRoster(!p.shifts);
     }
   }catch(e){ storageOK = false; }
@@ -572,6 +578,37 @@ function tierLabel(i){
   if(t.upTo === null || t.upTo === undefined || t.upTo === "") return `Lebih dari ${from-1} menit`;
   return `${from}–${t.upTo} menit`;
 }
+/* ---------- PIN pribadi karyawan ----------
+   Pengganti verifikasi wajah. Sederhana, tidak pernah menolak orang yang
+   benar, dan celah titip absen tertutup karena PIN hanya diketahui pemiliknya.
+   Foto selfie tetap diambil sebagai bukti utama. */
+function pinWajib(){ return db.settings.pinMode !== "off"; }
+function pinOf(emp){ const p = emp && emp.pin; return (p === null || p === undefined || p === "") ? null : String(p); }
+function tanpaPin(){ return pinWajib() ? db.employees.filter(e => e.active !== false && !pinOf(e)) : []; }
+
+/* Mengembalikan cara absen diloloskan: "pin", "kosong" (PIN belum diatur),
+   "admin" (disetujui admin), "off" (fitur dimatikan), atau null bila dibatalkan. */
+async function gerbangPin(emp, aksi){
+  if(!pinWajib()) return "off";
+  const asli = pinOf(emp);
+  if(!asli) return "kosong";
+  const label = aksi === "masuk" ? "absen masuk" : "absen pulang";
+  for(let sisa = 3; sisa > 0; sisa--){
+    const p = await askPin(emp.name, sisa === 3
+      ? `Masukkan PIN pribadi untuk ${label}`
+      : `PIN salah — sisa ${sisa} percobaan`);
+    if(p === null) return null;
+    if(p === asli) return "pin";
+  }
+  const a = await askPin("Izin Admin",
+    "PIN karyawan salah 3 kali. Masukkan PIN admin bila absen ini tetap sah.");
+  if(a === null) return null;
+  if(a === String(db.settings.pin)) return "admin";
+  toast("PIN admin salah");
+  return null;
+}
+const LABEL_PIN = { pin:"", kosong:"tanpa PIN", admin:"izin admin", off:"" };
+
 /* ---------- urutan nama ----------
    Satu arah urut dipakai di semua daftar karyawan agar posisi nama sama
    di layar absen, jadwal, daftar orang, dan rekap. */
@@ -1124,7 +1161,7 @@ function shrink(canvas, size, q){
 }
 function retake(){
   const opts = { mode:cam.mode, empId:cam.empId, action:cam.action,
-                 shots:cam.shots, adminOK:cam.adminOK, pos:cam.pos };
+                 shots:cam.shots, adminOK:cam.adminOK, pos:cam.pos, pinBy:cam.pinBy };
   closeCam();
   openCam(opts).then(() => { if(cam) tampilGeobar(); });
 }
@@ -1209,9 +1246,19 @@ function renderVerify(){
   const pass = score === null ? true : score >= th;
 
   let block = "";
+  if(cam.pinBy === "pin"){
+    block += `<div class="score pass" style="padding:6px 0 10px">
+      <div class="pct sm">PIN benar</div><div class="vd">Identitas terverifikasi</div></div>`;
+  }else if(cam.pinBy === "admin"){
+    block += `<div class="score fail" style="padding:6px 0 10px">
+      <div class="pct sm">Izin admin</div><div class="vd">PIN karyawan tidak cocok</div></div>`;
+  }else if(cam.pinBy === "kosong"){
+    block += `<div class="cstat" style="padding:8px 0">PIN karyawan ini belum diatur —
+      absen ditandai untuk dicek admin.</div>`;
+  }
   if(score === null){
-    block = `<div class="cstat" style="padding:10px 0">${
-      mode === "off" ? "Verifikasi wajah dinonaktifkan — foto tetap disimpan sebagai bukti."
+    block += `<div class="cstat" style="padding:10px 0">${
+      mode === "off" ? "Foto selfie disimpan sebagai bukti."
       : perluDaftarUlang(emp) ? "Wajah perlu didaftarkan ulang dengan cara pengukuran yang baru — foto tetap disimpan sebagai bukti."
       : "Wajah belum didaftarkan untuk karyawan ini — foto tetap disimpan sebagai bukti."}</div>`;
   }else{
@@ -1290,7 +1337,9 @@ async function saveAbsen(){
     [pre+"Lon"]: p ? +p.lon.toFixed(6) : null,
     [pre+"Acc"]: p ? p.acc : null,
     [pre+"Dist"]: g.status === "dalam" || g.status === "luar" ? g.jarak : null,
-    [pre+"GeoFlag"]: g.status === "off" ? false : geoFlag
+    [pre+"GeoFlag"]: g.status === "off" ? false : geoFlag,
+    [pre+"PinBy"]: cam.pinBy || "off",
+    [pre+"PinFlag"]: cam.pinBy === "kosong" || cam.pinBy === "admin"
   });
 
   if(cam.action === "masuk"){
@@ -1361,8 +1410,10 @@ function viewAbsen(){
   const feed = db.records.filter(r => r.date === k)
     .flatMap(r => {
       const emp = db.employees.find(e => e.id === r.empId); if(!emp) return [];
-      const out = [{ t:r.inAt, name:emp.name, kind:"Masuk", late:r.lateMin, flag:r.inFlag, geo:r.inGeoFlag }];
-      if(r.outAt) out.push({ t:r.outAt, name:emp.name, kind:"Pulang", ot:r.otMin, flag:r.outFlag, geo:r.outGeoFlag });
+      const out = [{ t:r.inAt, name:emp.name, kind:"Masuk", late:r.lateMin, flag:r.inFlag,
+                     geo:r.inGeoFlag, pin:LABEL_PIN[r.inPinBy] || "" }];
+      if(r.outAt) out.push({ t:r.outAt, name:emp.name, kind:"Pulang", ot:r.otMin, flag:r.outFlag,
+                             geo:r.outGeoFlag, pin:LABEL_PIN[r.outPinBy] || "" });
       return out;
     }).sort((a,b) => b.t - a.t);
 
@@ -1388,7 +1439,7 @@ function viewAbsen(){
         <div class="t2">${f.kind}${f.late > 0 ? ` · telat ${fmtDur(f.late)}` : ""}${
           f.late > 0 && fineFor(f.late) ? ` · denda ${rupiah(fineFor(f.late))}` : ""}${
           f.ot > 0 ? ` · lembur ${fmtDur(f.ot)}` : ""}${f.flag ? " · wajah perlu dicek" : ""}${
-          f.geo ? " · di luar area" : ""}</div>
+          f.geo ? " · di luar area" : ""}${f.pin ? " · " + f.pin : ""}</div>
       </div>
       <div class="tm">${hm(f.t)}</div>
     </div>`).join("")}</div>`
@@ -1804,6 +1855,8 @@ function openEmpDetail(id){
       if(!r.outAt) bits.push(`<b>belum absen pulang</b>`);
       if(r.inFlag || r.outFlag) bits.push(`<span style="color:var(--late)">wajah perlu dicek</span>`);
       if(r.inGeoFlag || r.outGeoFlag) bits.push(`<span style="color:var(--late)">lokasi perlu dicek</span>`);
+      if(r.inPinFlag || r.outPinFlag) bits.push(`<span style="color:var(--late)">${
+        (r.inPinBy === "admin" || r.outPinBy === "admin") ? "izin admin" : "tanpa PIN"}</span>`);
       if(r.edited) bits.push(`diedit admin`);
       return `<button class="item" data-act="editrec" data-id="${r.id}">
         <div class="grow"><div class="t1">${shortDate(r.date)}</div>
@@ -1914,6 +1967,10 @@ function saveManual(){
 /* ---- karyawan ---- */
 function secKaryawan(){
   return `
+  ${tanpaPin().length ? `<div class="note warn" style="margin-bottom:12px">
+    <b>${tanpaPin().length} karyawan belum punya PIN</b> — ${esc(tanpaPin().map(e=>e.name).join(", "))}.
+    Mereka masih bisa absen, tapi catatannya ditandai "tanpa PIN" karena identitasnya tidak terverifikasi.
+    Buka namanya lalu isi PIN 4 angka.</div>` : ""}
   <button class="btn pri blk" data-act="newemp">+ Tambah Karyawan</button>
   <div class="sect"><h2>Daftar karyawan · ${db.employees.length} orang</h2>
     <button class="sortbtn" data-act="sortname">${sortLabel()} ${sortArrow()}</button></div>
@@ -1928,8 +1985,8 @@ function secKaryawan(){
           ${(() => { const sh = shiftOn(e, dkey());
              return sh ? `hari ini ${esc(sh.name)}` : (isLibur(e, dkey()) ? "hari ini libur" : "hari ini belum dijadwalkan"); })()}</div>
       </div>
-      <span class="chip ${perluDaftarUlang(e) ? "c-telat" : n ? "c-kerja" : "c-belum"}">${
-        perluDaftarUlang(e) ? "daftar ulang" : n ? n + " foto" : "belum"}</span>
+      <span class="chip ${pinOf(e) ? "c-kerja" : pinWajib() ? "c-telat" : "c-belum"}">${
+        pinOf(e) ? "PIN ✓" : pinWajib() ? "PIN kosong" : "PIN —"}</span>
     </button>`;
   }).join("")}</div>` : `<div class="card"><div class="empty">Belum ada karyawan.</div></div>`}`;
 }
@@ -1943,6 +2000,12 @@ function openEmpForm(id){
       <input type="text" id="fn" value="${esc(e ? e.name : "")}" placeholder="mis. Rani Puspita" autocomplete="off"></div>
     <div class="field"><label for="fr">Posisi</label>
       <input type="text" id="fr" value="${esc(e ? e.role || "" : "")}" placeholder="mis. Barista" autocomplete="off"></div>
+    <div class="field"><label for="fp">PIN pribadi (4 angka)</label>
+      <input type="text" id="fp" inputmode="numeric" maxlength="4" autocomplete="off"
+        value="${esc(e && pinOf(e) ? pinOf(e) : "")}" placeholder="mis. 4821">
+      <span class="hint">${pinWajib()
+        ? "Diminta setiap kali absen. Beri tahu PIN ini hanya kepada yang bersangkutan, dan jangan pakai angka yang mudah ditebak seperti tanggal lahir."
+        : "Pengecekan PIN sedang dimatikan di Setelan, jadi isian ini belum dipakai."}</span></div>
     <div class="field"><label for="ft">Toleransi telat (menit)</label>
       <input type="number" id="ft" min="0" max="120" value="${e && e.tolerance !== null && e.tolerance !== undefined ? e.tolerance : ""}"
         placeholder="ikut pengaturan umum (${db.settings.tolerance})">
@@ -1974,8 +2037,12 @@ function saveEmp(id){
   const name = el("fn").value.trim();
   if(!name){ toast("Nama karyawan wajib diisi"); return; }
   const tolRaw = el("ft").value.trim();
+  const pinRaw = el("fp").value.replace(/\D/g, "");
+  if(pinRaw && pinRaw.length !== 4){ toast("PIN harus tepat 4 angka, atau biarkan kosong"); return; }
+  const bentrok = pinRaw && db.employees.find(x => x.id !== id && pinOf(x) === pinRaw);
+  if(bentrok){ toast(`PIN itu sudah dipakai ${bentrok.name} — pilih angka lain`); return; }
   const data = {
-    name, role: el("fr").value.trim(),
+    name, role: el("fr").value.trim(), pin: pinRaw || null,
     tolerance: tolRaw === "" ? null : Math.max(0, Number(tolRaw)), active: formActive
   };
   if(id){
@@ -2045,7 +2112,24 @@ function secSetelan(){
     Telat 0 menit tidak pernah kena denda. Mengubah tarif langsung berlaku pada seluruh rekap,
     termasuk bulan-bulan sebelumnya.</div>` : ""}
 
+  <div class="sect"><h2>PIN karyawan</h2></div>
+  <div class="field"><label for="spin">Mode</label>
+    <select id="spin" data-act="setting" data-k="pinMode">
+      <option value="wajib" ${s.pinMode !== "off" ? "selected" : ""}>Wajib saat absen</option>
+      <option value="off" ${s.pinMode === "off" ? "selected" : ""}>Nonaktif</option>
+    </select>
+    <span class="hint">${s.pinMode === "off"
+      ? "Karyawan cukup mengetuk namanya, tanpa PIN. Foto selfie tetap diambil sebagai bukti."
+      : "Karyawan memasukkan PIN pribadinya sebelum berfoto. Ini pengaman utama terhadap titip absen. PIN diatur per orang di tab Orang."}</span></div>
+  ${pinWajib() && tanpaPin().length ? `<div class="note warn">${tanpaPin().length} karyawan
+    belum punya PIN. Buka <b>Orang</b> untuk mengisinya.</div>` : ""}
+
   <div class="sect"><h2>Verifikasi wajah</h2></div>
+  <div class="note warn" style="margin-bottom:12px">Fitur ini <b>tidak andal</b> dan sebaiknya dibiarkan
+    nonaktif. Pengujian menunjukkan wajah yang benar bisa ditolak hanya karena orangnya berdiri sedikit
+    bergeser atau lebih tinggi daripada saat mendaftar. Pengenalan wajah yang akurat memerlukan model
+    terlatih, yang tidak ada di aplikasi satu berkas ini. Pakai <b>PIN karyawan</b> di atas, dan andalkan
+    foto selfie sebagai bukti.</div>
   <div class="field"><label for="sf">Mode</label>
     <select id="sf" data-act="setting" data-k="faceMode">
       ${modes.map(([k,l]) => `<option value="${k}" ${s.faceMode===k?"selected":""}>${l}</option>`).join("")}</select>
@@ -2242,6 +2326,7 @@ function tableDetail(){
     ...(withFine ? [{ h:"Denda (Rp)", t:"money", w:13 }] : []),
     { h:"Pulang Cepat (menit)", t:"int", w:11 }, { h:"Lembur (menit)", t:"int", w:10 },
     { h:"Durasi Kerja (menit)", t:"int", w:11 }, { h:"Durasi Kerja (jam)", t:"dec", w:11 },
+    { h:"PIN Masuk", t:"s", w:13 }, { h:"PIN Pulang", t:"s", w:13 },
     { h:"Cocok Wajah Masuk (%)", t:"int", w:11 }, { h:"Cocok Wajah Pulang (%)", t:"int", w:11 },
     { h:"Lat Masuk", t:"coord", w:12 }, { h:"Lon Masuk", t:"coord", w:12 },
     { h:"Akurasi Masuk (m)", t:"int", w:10 }, { h:"Jarak Masuk (m)", t:"int", w:10 },
@@ -2262,13 +2347,17 @@ function tableDetail(){
     if(!r.outAt) flags.push("Belum absen pulang");
     if(r.inFlag || r.outFlag) flags.push("Wajah perlu dicek");
     if(r.inGeoFlag || r.outGeoFlag) flags.push("Lokasi di luar area");
+    if(r.inPinBy === "kosong" || r.outPinBy === "kosong") flags.push("Tanpa PIN");
+    if(r.inPinBy === "admin" || r.outPinBy === "admin") flags.push("PIN diizinkan admin");
     if(r.edited) flags.push("Diedit admin");
     const n = v => (v === null || v === undefined) ? "" : v;
+    const teksPin = { pin:"Benar", kosong:"Belum diatur", admin:"Izin admin", off:"Nonaktif" };
     rows.push([r.date, DAYS[new Date(y,m-1,d).getDay()], e.name, e.role || "",
       sh ? sh.name : "", sh ? sh.start : "", sh ? sh.end : "",
       hm(r.inAt), r.outAt ? hm(r.outAt) : "", r.lateMin || 0,
       ...(withFine ? [fineFor(r.lateMin)] : []),
       r.earlyMin || 0, r.otMin || 0, r.workMin || 0, (r.workMin || 0)/60,
+      teksPin[r.inPinBy] || "", r.outAt ? (teksPin[r.outPinBy] || "") : "",
       r.inScore == null ? "" : r.inScore, r.outScore == null ? "" : r.outScore,
       n(r.inLat), n(r.inLon), n(r.inAcc), n(r.inDist),
       n(r.outLat), n(r.outLon), n(r.outAcc), n(r.outDist),
@@ -2569,8 +2658,13 @@ document.addEventListener("click", async (ev) => {
     case "emp": openEmpSheet(id); break;
     case "go": {
       closeSheet();
+      const emp = db.employees.find(e => e.id === id);
+      if(!emp) break;
+      // PIN diminta lebih dulu supaya kamera tidak menyala sia-sia
+      const lolos = await gerbangPin(emp, t.dataset.mode);
+      if(lolos === null) break;
       cam0EmpId = id;
-      openCam({ mode:"absen", empId:id, action:t.dataset.mode });
+      openCam({ mode:"absen", empId:id, action:t.dataset.mode, pinBy:lolos });
       break;
     }
     case "pin": pinKey(t.dataset.k); break;

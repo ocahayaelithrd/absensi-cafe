@@ -6,13 +6,13 @@ tetap bisa dibuka meski internet cafe mati.
 
 ## Cara kerja
 
-Karyawan mengetuk namanya di layar, kamera depan menyala, wajahnya dideteksi dan
-difoto, lalu sistem membandingkan foto itu dengan wajah yang sudah didaftarkan.
-Foto selfie selalu disimpan sebagai bukti.
+Karyawan mengetuk namanya di layar, memasukkan **PIN pribadi**, lalu kamera depan
+menyala dan mengambil foto selfie. PIN membuktikan siapa yang absen, foto
+menyimpan buktinya, dan geofence memastikan absen dilakukan di cafe.
 
 ## Fitur
 
-- **Absen masuk & pulang** dengan selfie dan verifikasi wajah
+- **Absen masuk & pulang** dengan PIN pribadi dan foto selfie sebagai bukti
 - **Jadwal shift per tanggal** — roster mingguan, shift tiap karyawan bisa
   berbeda tiap hari; shift lintas tengah malam didukung
 - **Hitung otomatis** keterlambatan, pulang cepat, durasi kerja, dan lembur
@@ -134,7 +134,33 @@ Koordinat, akurasi, dan jarak ikut terekspor ke Excel. Di rincian catatan absen,
 tiap titik bisa dibuka di Google Maps. Semua data lokasi tersimpan di HP itu
 saja dan tidak dikirim ke mana pun.
 
+## PIN karyawan
+
+Setiap karyawan punya PIN 4 angka yang diminta sebelum kamera menyala. PIN diatur
+admin di **Orang**, tidak boleh sama antar karyawan, dan langsung ditolak kalau
+bentrok.
+
+- **PIN benar** → lanjut berfoto, catatan bersih.
+- **Salah 3 kali** → ditawarkan izin admin; kalau dipakai, catatannya ditandai
+  *izin admin*.
+- **Dibatalkan** → tidak ada yang tercatat, kamera tidak menyala.
+- **PIN belum diatur** → karyawan tetap bisa absen supaya shift pagi tidak macet,
+  tapi catatannya ditandai *tanpa PIN* dan admin diberi peringatan berisi
+  nama-namanya.
+
+Penanda itu muncul di aktivitas harian, rincian karyawan, dan kolom **PIN Masuk**
+serta **PIN Pulang** pada lembar Detail di Excel.
+
 ## Verifikasi wajah
+
+> **Fitur ini nonaktif secara bawaan dan sebaiknya dibiarkan begitu.**
+> Pengukuran menunjukkan wajah yang benar bisa ditolak hanya karena orangnya
+> berdiri sedikit bergeser atau lebih tinggi daripada saat mendaftar — pada
+> pengujian, kepala bergeser ke samping saja menjatuhkan kecocokan ke 0%.
+> Menambah toleransi posisi justru menaikkan skor orang lain sampai melewati
+> ambang, jadi tidak ada setelan yang memisahkan keduanya. Pengenalan wajah yang
+> akurat memerlukan model terlatih, yang tidak tersedia di aplikasi satu berkas
+> tanpa dependensi ini. Gunakan **PIN karyawan** di atas.
 
 Pencocokan berjalan sepenuhnya di HP, tanpa mengirim foto ke mana pun. Metodenya
 deskriptor HOG (6×6 sel × 8 arah) digabung peta intensitas 12×12, dibandingkan
@@ -172,15 +198,12 @@ Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
    di **Setelan → Luring & ketahanan data** agar data tidak boleh dibuang Chrome.
 4. Buka tab **Admin** (PIN bawaan `1234`), lalu:
    - ganti PIN di **Setelan**,
-   - tambahkan karyawan di **Orang**, dan daftarkan wajah tiap orang (3 foto),
+   - tambahkan karyawan di **Orang**, dan beri tiap orang **PIN 4 angka**,
    - sesuaikan pola shift lewat **Jadwal → Kelola Shift**,
    - susun roster minggu ini di **Jadwal**,
-   - atur titik cafe dan radius di **Setelan → Lokasi absen**,
-   - pakai **Orang → Uji Wajah** untuk menyetel ambang kecocokan sesuai
-     pencahayaan cafe.
+   - atur titik cafe dan radius di **Setelan → Lokasi absen**.
 
-Letakkan HP di dudukan permanen. Bila HP dipindah atau lampu diganti, daftarkan
-ulang wajah karyawan.
+Letakkan HP di dudukan permanen di dekat kasir.
 
 ## Luring & ketahanan data
 
