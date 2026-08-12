@@ -2219,8 +2219,8 @@ function secSetelan(){
   <div class="field"><span class="hint" id="usage">Menghitung pemakaian penyimpanan…</span></div>
   <div class="stack" style="gap:8px">
     <div class="btnrow">
-      <button class="btn" data-act="backup">Cadangkan (JSON)</button>
-      <label class="btn" style="cursor:pointer">Pulihkan<input type="file" accept="application/json,.json" id="restore" hidden></label>
+      <button class="btn" data-act="backup">Cadangkan (ZIP)</button>
+      <label class="btn" style="cursor:pointer">Pulihkan<input type="file" accept=".zip,.json,application/zip,application/json" id="restore" hidden></label>
     </div>
     <button class="btn ghost blk" data-act="prune">Hapus Foto Lama Sekarang</button>
     <button class="btn dgr blk" data-act="reset">Hapus Semua Data</button>
@@ -2275,30 +2275,133 @@ async function changePin(){
   if(a !== b){ toast("PIN tidak sama — coba lagi"); return; }
   db.settings.pin = a; save(); toast("PIN admin diperbarui");
 }
-function backup(){
-  const payload = JSON.stringify({ app:"absensi-cafe", version:1, exportedAt:new Date().toISOString(), data:db }, null, 1);
-  if(!downloadBytes(`cadangan-absensi-${dkey()}.json`, utf8(payload), "application/json;charset=utf-8"))
-    toast("Unduhan diblokir browser — buka aplikasi langsung di Chrome, bukan di dalam aplikasi lain");
+/* ---------- cadangan berisi foto ----------
+   Versi sebelumnya hanya menyimpan db sebagai JSON, sedangkan foto tinggal di
+   IndexedDB — jadi cadangan memulihkan angka tapi kehilangan seluruh bukti
+   foto. Sekarang cadangan berbentuk zip: data.json plus satu berkas JPEG per
+   foto, sehingga bisa juga dibuka langsung di PC tanpa aplikasi ini. */
+const dataUrlToBytes = (u) => {
+  const b64 = String(u).slice(String(u).indexOf(",") + 1);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+};
+const bytesToDataUrl = (b) => {
+  let bin = "";
+  for(let i=0;i<b.length;i++) bin += String.fromCharCode(b[i]);
+  return "data:image/jpeg;base64," + btoa(bin);
+};
+const namaFoto = (rec, sisi) => `foto/${rec.date}_${rec.id}_${sisi === "in" ? "masuk" : "pulang"}.jpg`;
+
+async function backup(){
+  toast("Menyiapkan cadangan…");
+  const files = [];
+  const daftar = [];
+  for(const r of db.records){
+    for(const sisi of ["in","out"]){
+      if(!(sisi === "in" ? r.hasIn : r.hasOut)) continue;
+      const foto = await photoGet(r.id + ":" + sisi);
+      if(!foto) continue;
+      const nama = namaFoto(r, sisi);
+      files.push({ name:nama, data:dataUrlToBytes(foto), simpanSaja:true });
+      daftar.push({ rec:r.id, sisi, nama });
+    }
+  }
+  const payload = JSON.stringify({ app:"absensi-cafe", version:2,
+    exportedAt:new Date().toISOString(), fotoIndex:daftar, data:db }, null, 1);
+  files.unshift({ name:"data.json", data:payload });
+  files.push({ name:"BACA-SAYA.txt", data:
+    `Cadangan Absensi Cafe\r\n\r\nBuka folder "foto" untuk melihat bukti absen, `
+    + `dinamai menurut tanggal.\r\nBerkas "data.json" berisi pengaturan, karyawan, shift, `
+    + `jadwal, dan catatan absen.\r\n\r\nUntuk memulihkan: buka aplikasi Absensi Cafe, `
+    + `Setelan, lalu Pulihkan, dan pilih berkas zip ini.\r\n` });
+
+  const bytes = await zipFiles(files);
+  const ok = downloadBytes(`cadangan-absensi-${dkey()}.zip`, bytes, "application/zip");
+  if(!ok) toast("Unduhan diblokir browser — buka aplikasi langsung di Chrome, bukan di dalam aplikasi lain");
+  else toast(`Cadangan lengkap: ${daftar.length} foto disertakan`);
 }
-function restoreFile(file){
-  const fr = new FileReader();
-  fr.onload = () => {
-    try{
-      const p = JSON.parse(fr.result);
-      const d = p && p.data ? p.data : p;
-      if(!d || !Array.isArray(d.employees) || !Array.isArray(d.records)) throw 0;
-      if(!confirm(`Ganti semua data saat ini dengan cadangan ini (${d.employees.length} karyawan, ${d.records.length} catatan)?`)) return;
-      db.settings  = Object.assign({}, DEFAULTS.settings, d.settings || {});
-      db.employees = d.employees;
-      db.records   = d.records;
-      db.shifts    = Array.isArray(d.shifts) && d.shifts.length ? d.shifts : [];
-      db.roster    = (d.roster && typeof d.roster === "object") ? d.roster : {};
-      migrateToRoster(!d.shifts);          // cadangan versi lama ikut dikonversi
-      recalcAll(); save(); render(); toast("Cadangan berhasil dipulihkan");
-    }catch(e){ toast("File cadangan tidak dikenali"); }
-  };
-  fr.onerror = () => toast("File tidak bisa dibaca");
-  fr.readAsText(file);
+
+/* Pembaca zip untuk memulihkan cadangan. */
+async function bacaZip(bytes){
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  let eo = -1;
+  for(let i = bytes.length - 22; i >= 0; i--) if(dv.getUint32(i, true) === 0x06054b50){ eo = i; break; }
+  if(eo < 0) throw new Error("bukan berkas zip");
+  const jml = dv.getUint16(eo + 10, true);
+  let p = dv.getUint32(eo + 16, true);
+  const isi = {};
+  for(let i = 0; i < jml; i++){
+    const method = dv.getUint16(p + 10, true);
+    const cs = dv.getUint32(p + 20, true);
+    const nl = dv.getUint16(p + 28, true), el2 = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    const off = dv.getUint32(p + 42, true);
+    const nama = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nl));
+    const lnl = dv.getUint16(off + 26, true), lel = dv.getUint16(off + 28, true);
+    const mulai = off + 30 + lnl + lel;
+    let data = bytes.subarray(mulai, mulai + cs);
+    if(method === 8){
+      const s = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      data = new Uint8Array(await new Response(s).arrayBuffer());
+    }
+    isi[nama] = data;
+    p += 46 + nl + el2 + cl;
+  }
+  return isi;
+}
+/* Menerima cadangan zip berisi foto maupun cadangan JSON versi lama. */
+async function restoreFile(file){
+  try{
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const zip = bytes[0] === 0x50 && bytes[1] === 0x4B;
+    let teks, isi = null;
+    if(zip){
+      isi = await bacaZip(bytes);
+      if(!isi["data.json"]) throw new Error("zip tidak memuat data.json");
+      teks = new TextDecoder().decode(isi["data.json"]);
+    }else{
+      teks = new TextDecoder().decode(bytes).replace(/^﻿/, "");
+    }
+    const p = JSON.parse(teks);
+    const d = p && p.data ? p.data : p;
+    if(!d || !Array.isArray(d.employees) || !Array.isArray(d.records))
+      throw new Error("struktur tidak dikenali");
+
+    const jmlFoto = isi ? Object.keys(isi).filter(n => n.startsWith("foto/")).length : 0;
+    if(!confirm(`Ganti semua data saat ini dengan cadangan ini?\n\n`
+      + `${d.employees.length} karyawan\n${d.records.length} catatan absen\n`
+      + (zip ? `${jmlFoto} foto` : `tanpa foto (cadangan versi lama)`))) return;
+
+    db.settings  = Object.assign({}, DEFAULTS.settings, d.settings || {});
+    db.employees = d.employees;
+    db.records   = d.records;
+    db.shifts    = Array.isArray(d.shifts) && d.shifts.length ? d.shifts : [];
+    db.roster    = (d.roster && typeof d.roster === "object") ? d.roster : {};
+    // cadangan dari sebelum PIN jangan menyalakan lagi verifikasi wajah
+    if(d.settings && d.settings.pinMode === undefined) db.settings.faceMode = "off";
+    migrateToRoster(!d.shifts);          // cadangan versi lama ikut dikonversi
+
+    let dipulihkan = 0;
+    if(isi){
+      const index = Array.isArray(p.fotoIndex) ? p.fotoIndex : [];
+      for(const f of index){
+        const data = isi[f.nama];
+        if(!data) continue;
+        await photoSet(f.rec + ":" + f.sisi, bytesToDataUrl(data));
+        dipulihkan++;
+      }
+    }
+    // catatan yang fotonya tidak ada di cadangan jangan mengaku punya foto
+    for(const r of db.records){
+      if(r.hasIn  && !(await photoGet(r.id + ":in")))  r.hasIn  = false;
+      if(r.hasOut && !(await photoGet(r.id + ":out"))) r.hasOut = false;
+    }
+    recalcAll(); save(); render();
+    toast(zip ? `Dipulihkan · ${dipulihkan} foto` : "Dipulihkan · cadangan lama, tanpa foto");
+  }catch(e){
+    toast("Berkas cadangan tidak dikenali: " + e.message);
+  }
 }
 function resetAll(){
   if(!confirm("Hapus SEMUA karyawan, catatan absen, dan foto dari HP ini? Tindakan ini tidak bisa dibatalkan.")) return;
@@ -2448,7 +2551,8 @@ async function zipFiles(files){
   const enc = [];
   for(const f of files){
     const raw = typeof f.data === "string" ? utf8(f.data) : f.data;
-    const comp = await deflateRaw(raw);
+    // JPEG sudah terkompresi; memampatkannya lagi hanya membakar waktu
+    const comp = f.simpanSaja ? null : await deflateRaw(raw);
     enc.push({ name: utf8(f.name), raw, body: comp || raw, method: comp ? 8 : 0, crc: crc32(raw) });
   }
   const now = new Date();

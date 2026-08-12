@@ -92,10 +92,20 @@ dengan CRC-32 buatan sendiri dan kompresi lewat `CompressionStream("deflate-raw"
 bawaan browser, dengan cadangan tanpa kompresi bila API itu tidak tersedia. Tidak
 ada library luar, sesuai sifat aplikasi yang satu berkas dan bekerja luring.
 
-Terpisah dari ekspor, tombol **Cadangkan (JSON)** di Setelan menyimpan seluruh
-data mentah — pengaturan, karyawan, shift, roster, dan catatan absen — untuk
-dipulihkan lagi lewat tombol **Pulihkan**. Cadangan itu untuk memindahkan atau
-menyelamatkan data, bukan untuk dibaca manusia.
+Terpisah dari ekspor, tombol **Cadangkan (ZIP)** di Setelan menyimpan seluruh data
+sebagai satu berkas zip:
+
+```
+cadangan-absensi-2026-08-12.zip
+├── data.json                        pengaturan, karyawan, shift, roster, absen
+├── foto/2026-08-12_r1_masuk.jpg     satu berkas per foto, dinamai per tanggal
+└── BACA-SAYA.txt
+```
+
+Zip itu bisa dibuka langsung di PC untuk menelusuri foto bukti tanpa perlu
+aplikasi ini, atau dimuat kembali lewat tombol **Pulihkan**. Pemulihan juga masih
+menerima cadangan JSON versi lama, dan catatan yang fotonya tidak ada di cadangan
+otomatis berhenti mengaku punya foto.
 
 ## Urutan nama
 
@@ -236,5 +246,5 @@ Semua data tersimpan di HP itu saja — pengaturan dan catatan absen di
 Aplikasi tidak punya satu pun `fetch`, `XMLHttpRequest`, atau `WebSocket` ke
 layanan luar; satu-satunya data yang bisa keluar adalah koordinat yang Anda
 kirim sendiri saat mengetuk tautan peta.
-Ekspor Excel setiap tutup buku dan gunakan **Cadangkan (JSON)** secara berkala;
+Ekspor Excel setiap tutup buku dan gunakan **Cadangkan (ZIP)** secara berkala;
 bila HP hilang atau di-reset, datanya ikut hilang.
