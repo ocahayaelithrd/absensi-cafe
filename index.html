@@ -1534,9 +1534,12 @@ function viewAdmin(){
     </div></div>`;
   }
   return `
-  ${!perangkatUtama() && fb.user ? `<div class="note warn" style="margin-bottom:12px">
-    <b>Perangkat telaah.</b> Perubahan yang Anda buat di sini <b>tidak dikirim ke awan</b> dan akan
-    hilang saat menarik data lagi. Untuk mengoreksi absensi, lakukan di tablet kios.</div>` : ""}
+  ${!perangkatUtama() && fb.user ? (() => { const n = hitungTertunda();
+    return `<div class="note${n ? " warn" : ""}" style="margin-bottom:12px">
+    <b>Perangkat telaah.</b> ${n
+      ? `Ada <b>${n} koreksi</b> yang belum dikirim. Buka <b>Setelan → Kirim Koreksi</b> agar tablet menerapkannya.`
+      : "Koreksi yang Anda buat di sini dikirim sebagai permintaan lewat Setelan, lalu diterapkan tablet."}</div>`;
+  })() : ""}
   <div class="seg">
     ${[["jadwal","Jadwal"],["rekap","Rekap"],["karyawan","Orang"],["setelan","Setelan"]].map(([k,l]) =>
       `<button data-act="sec" data-sec="${k}" aria-current="${adminSec===k}">${l}</button>`).join("")}
@@ -2242,7 +2245,19 @@ function secSetelan(){
         <span class="dot2 ok"></span>
         <div class="grow"><div class="statnm">Isi perangkat ini</div>
           <div class="statv">${db.employees.length} karyawan · ${db.records.length} catatan</div></div>
+      </div>
+      <div class="statrow">
+        <span class="dot2 ${tertunda ? "warn" : koreksiTertunda ? "warn" : "ok"}"></span>
+        <div class="grow"><div class="statnm">Koreksi dari perangkat ini</div>
+          <div class="statv">${tertunda ? `${tertunda} perubahan belum dikirim`
+            : koreksiTertunda ? `${koreksiTertunda} menunggu diterapkan tablet`
+            : "Tidak ada"}</div></div>
       </div>`}
+      ${perangkatUtama() && koreksiTertunda ? `<div class="statrow">
+        <span class="dot2 warn"></span>
+        <div class="grow"><div class="statnm">Koreksi dari PC</div>
+          <div class="statv">${koreksiTertunda} menunggu diterapkan</div></div>
+      </div>` : ""}
     </div>
     ${sync.error ? `<div class="note warn" style="margin-top:10px">Galat sinkronisasi:<br>
       <span class="mono" style="font-size:11px;overflow-wrap:anywhere">${esc(sync.error)}</span></div>` : ""}
@@ -2251,12 +2266,14 @@ function secSetelan(){
     <div class="btnrow" style="margin-top:10px">
       ${perangkatUtama()
         ? `<button class="btn pri" data-act="fbsync" ${sync.sibuk ? "disabled" : ""}>Sinkronkan Sekarang</button>`
-        : `<button class="btn pri" data-act="fbtarik" ${sync.sibuk ? "disabled" : ""}>Tarik dari Awan</button>`}
+        : `<button class="btn pri" data-act="fbkoreksi" ${sync.sibuk || !tertunda ? "disabled" : ""}>Kirim Koreksi${tertunda ? ` (${tertunda})` : ""}</button>`}
       <button class="btn ghost" data-act="fbkeluar">Keluar</button>
     </div>
+    ${!perangkatUtama() ? `<button class="btn ghost blk" data-act="fbtarik" style="margin-top:8px"
+      ${sync.sibuk ? "disabled" : ""}>Tarik Data Terbaru dari Awan</button>` : ""}
     <div class="hint" style="margin-top:8px">${perangkatUtama()
-      ? "Tablet adalah sumber kebenaran; awan hanya salinan. Perubahan terkirim otomatis beberapa detik setelah terjadi, dan mengendap dulu bila internet mati."
-      : "Menarik akan menimpa data di perangkat ini dengan isi awan, termasuk foto bukti. Rekap, jadwal, dan ekspor Excel lalu bisa dibuka seperti biasa."}</div>
+      ? "Tablet adalah sumber kebenaran; awan hanya salinan. Koreksi dari PC diterapkan lebih dulu setiap kali menyinkron, lalu ikut tercermin ke awan."
+      : "Koreksi Anda dikirim sebagai permintaan, bukan langsung mengubah catatan resmi. Tablet menerapkannya saat tersambung internet, lalu hasilnya kembali ke sini saat menarik data. Menarik akan menimpa data lokal, jadi kirim koreksi dulu."}</div>
     ${perangkatUtama() ? `
     <div class="sect" style="margin-top:16px"><h2>Jadikan perangkat ini acuan</h2></div>
     <button class="btn dgr blk" data-act="fbtimpa" ${sync.sibuk ? "disabled" : ""}>Timpa Awan dari Perangkat Ini</button>
@@ -2996,6 +3013,7 @@ document.addEventListener("click", async (ev) => {
     case "fbsync": dorongKeAwan(true); break;
     case "fbtimpa": timpaAwanDariSini(); break;
     case "fbtarik": tarikDariAwan(true); break;
+    case "fbkoreksi": kirimKoreksi(true); break;
     case "mintapersist": {
       const s = await pastikanPenyimpananPermanen(true);
       render();
@@ -3127,9 +3145,14 @@ async function pasangFirebase(){
     fb.auth.onAuthStateChanged(u => {
       fb.user = u; segarkanStatusAwan();
       if(!u) return;
-      // perangkat utama mengirim perubahannya; perangkat telaah menarik yang terbaru
-      if(perangkatUtama()) jadwalkanSync(1500);
-      else setTimeout(() => tarikDariAwan(false), 1500);
+      hitungKoreksiTertunda();
+      if(perangkatUtama()){ jadwalkanSync(1500); return; }
+      // perangkat telaah menarik yang terbaru, tapi jangan sampai menimpa
+      // koreksi yang belum dikirim
+      setTimeout(() => {
+        if(hitungTertunda()) toast("Ada koreksi belum dikirim — tekan Kirim Koreksi dulu");
+        else tarikDariAwan(false);
+      }, 1500);
     });
     fb.siap = true; fb.error = null;
   }catch(e){
@@ -3293,6 +3316,9 @@ async function dorongKeAwan(manual){
   if(sync.sibuk){ if(manual) toast("Sinkronisasi sedang jalan"); return; }
   sync.sibuk = true; sync.error = null; segarkanStatusAwan();
   try{
+    // koreksi dari PC diterapkan dulu, supaya ikut tercermin pada dorongan ini
+    try{ await terapkanKoreksi(); }
+    catch(e){ sync.error = "koreksi: " + (e.code || e.message); }
     const peta = petaDok();
     const tulis = Object.keys(peta).filter(k => sync.hash[k] !== peta[k].sidik);
     const hapus = Object.keys(sync.hash).filter(k => !peta[k]);
@@ -3401,14 +3427,144 @@ function bersihDariAwan(data, id){
   o.id = id;
   return o;
 }
+/* ============================================================
+   TAHAP 4 — kotak koreksi: PC mengusulkan, tablet menerapkan
+
+   Perangkat telaah tidak pernah menulis dokumen resmi. Ia menaruh
+   permintaan koreksi di koleksi terpisah, lalu tablet menerapkannya ke
+   datanya sendiri dan mencerminkannya kembali seperti biasa. Dengan
+   begitu hanya satu perangkat yang pernah menulis catatan resmi, dan
+   bentrokan penulisan tidak mungkin terjadi.
+   ============================================================ */
+const KOREKSI = () => AKAR().collection("koreksi");
+let koreksiTertunda = 0;
+
+/* Dipakai perangkat telaah sebagai ganti mendorong: perubahan lokal
+   dikirim sebagai permintaan, bukan sebagai data resmi. */
+async function kirimKoreksi(manual){
+  if(!fb.siap || !fb.db || !fb.user){ if(manual) toast("Belum masuk ke akun cafe"); return; }
+  if(perangkatUtama()){ if(manual) toast("Perangkat utama menulis langsung, bukan lewat koreksi"); return; }
+  if(sync.sibuk){ if(manual) toast("Sedang sibuk"); return; }
+  const peta = petaDok();
+  const ubah = Object.keys(peta).filter(k => sync.hash[k] !== peta[k].sidik);
+  const hapus = Object.keys(sync.hash).filter(k => !peta[k]);
+  if(!ubah.length && !hapus.length){ if(manual) toast("Tidak ada koreksi untuk dikirim"); return; }
+  if(manual && !confirm(`Kirim ${ubah.length + hapus.length} koreksi ke tablet?\n\n`
+    + "Tablet akan menerapkannya saat tersambung internet. Sampai itu terjadi, "
+    + "catatan resmi belum berubah.")) return;
+
+  sync.sibuk = true; sync.error = null; segarkanStatusAwan();
+  try{
+    const stempel = firebase.firestore.FieldValue.serverTimestamp();
+    for(let i = 0; i < ubah.length + hapus.length; i += 50){
+      const batch = fb.db.batch();
+      const potongan = [...ubah.map(k => ["set", k]), ...hapus.map(k => ["del", k])].slice(i, i + 50);
+      for(const [jenis, k] of potongan){
+        const isi = jenis === "set" ? amankanFirestore(peta[k].isi, false) : null;
+        const d = { jalur:k, jenis, oleh: fb.user.email || "", status:"menunggu", waktu: stempel };
+        if(isi) d.data = isi;
+        batch.set(KOREKSI().doc(), d);
+      }
+      await batch.commit();
+    }
+    // sidik jari disamakan agar koreksi yang sama tidak terkirim dua kali
+    for(const k of ubah) sync.hash[k] = peta[k].sidik;
+    for(const k of hapus) delete sync.hash[k];
+    saveSync();
+    koreksiTertunda = ubah.length + hapus.length;
+    toast(`${koreksiTertunda} koreksi dikirim — menunggu diterapkan tablet`);
+  }catch(e){
+    sync.error = (e.code || "") + (e.message ? " — " + e.message : "");
+    if(manual) toast("Gagal mengirim koreksi: " + (e.code || e.message));
+  }
+  sync.sibuk = false; segarkanStatusAwan();
+}
+async function hitungKoreksiTertunda(){
+  if(!fb.db || !fb.user) return;
+  try{
+    const s = await KOREKSI().where("status", "==", "menunggu").get();
+    koreksiTertunda = s.size;
+  }catch(e){ /* tidak penting bila gagal */ }
+  segarkanStatusAwan();
+}
+
+/* Dijalankan perangkat utama sebelum mendorong: koreksi dari PC diterapkan
+   ke data lokal lebih dulu, lalu ikut tercermin ke awan seperti perubahan
+   biasa. Dokumen koreksi dihapus setelah diterapkan. */
+async function terapkanKoreksi(){
+  if(!fb.db || !fb.user || !perangkatUtama()) return 0;
+  let n = 0, lewat = 0;
+  const snap = await KOREKSI().where("status", "==", "menunggu").orderBy("waktu").get();
+  if(snap.empty) return 0;
+  const JENIS_SAH = ["settings", "emp", "shift", "roster", "rec"];
+  for(const d of snap.docs){
+    const k = d.data();
+    const [jenis, ...sisa] = String(k.jalur || "").split("/");
+    const id = sisa.join("/");
+    /* Koreksi cacat harus dilewati, bukan diterapkan. Tanpa penjagaan ini,
+       permintaan tanpa isi akan menyuntikkan catatan absensi kosong. */
+    if(!JENIS_SAH.includes(jenis) || (jenis !== "settings" && !id)){ lewat++; continue; }
+    if(k.jenis !== "set" && k.jenis !== "del"){ lewat++; continue; }
+    if(k.jenis === "set" && (!k.data || typeof k.data !== "object"
+       || !Object.keys(k.data).length)){ lewat++; continue; }
+    try{
+      if(k.jenis === "del"){
+        if(jenis === "emp")         db.employees = db.employees.filter(e => e.id !== id);
+        else if(jenis === "shift")  db.shifts    = db.shifts.filter(s => s.id !== id);
+        else if(jenis === "roster") delete db.roster[id];
+        else if(jenis === "rec"){
+          db.records = db.records.filter(r => r.id !== id);
+          await photoDel(id + ":in"); await photoDel(id + ":out");
+        }
+      }else{
+        const isi = pulihkanFirestore(k.data || {});
+        if(jenis === "settings")    db.settings = Object.assign({}, DEFAULTS.settings, isi.settings || isi);
+        else if(jenis === "roster") db.roster[id] = isi.hari || isi;
+        else {
+          isi.id = id;                 // pengenal diambil dari jalur, bukan dari isi kiriman
+          if(jenis === "emp"){
+            const i = db.employees.findIndex(e => e.id === id);
+            if(i >= 0) db.employees[i] = isi; else db.employees.push(isi);
+          }else if(jenis === "shift"){
+            const i = db.shifts.findIndex(s => s.id === id);
+            if(i >= 0) db.shifts[i] = isi; else db.shifts.push(isi);
+          }else if(jenis === "rec"){
+            delete isi.fotoMasuk; delete isi.fotoPulang;   // foto tetap milik tablet
+            const i = db.records.findIndex(r => r.id === id);
+            if(i >= 0) db.records[i] = Object.assign({}, db.records[i], isi);
+            else db.records.push(isi);
+          }
+        }
+      }
+      n++;
+    }catch(e){ /* satu koreksi rusak tidak boleh menghentikan sisanya */ }
+  }
+  // dokumen koreksi dibuang setelah diterapkan agar tidak menumpuk
+  for(let i = 0; i < snap.docs.length; i += 100){
+    const batch = fb.db.batch();
+    for(const d of snap.docs.slice(i, i + 100)) batch.delete(d.ref);
+    await batch.commit();
+  }
+  if(n){ bersihkanRoster(); recalcAll(); save(); render();
+    toast(`${n} koreksi dari PC diterapkan${lewat ? ` · ${lewat} dilewati karena cacat` : ""}`); }
+  else if(lewat) toast(`${lewat} koreksi dilewati karena cacat`);
+  return n;
+}
+
 async function tarikDariAwan(manual){
   if(!fb.siap || !fb.db || !fb.user){ if(manual) toast("Belum masuk ke akun cafe"); return; }
   if(sync.sibuk){ if(manual) toast("Sedang sibuk"); return; }
   if(manual && perangkatUtama()
     && !confirm("Perangkat ini berperan UTAMA. Menarik dari awan akan menimpa data di perangkat ini.\n\n"
       + "Biasanya ini tidak diinginkan di tablet kios. Lanjutkan?")) return;
-  if(manual && !perangkatUtama()
-    && !confirm("Ganti seluruh data di perangkat ini dengan data terbaru dari awan?")) return;
+  if(manual && !perangkatUtama()){
+    const belumKirim = hitungTertunda();
+    if(!confirm(belumKirim
+      ? `Ada ${belumKirim} koreksi yang BELUM dikirim ke tablet.\n\n`
+        + "Menarik sekarang akan membuang koreksi itu. Batalkan lalu tekan Kirim Koreksi dulu?\n\n"
+        + "Tekan OK hanya bila Anda memang ingin membuangnya."
+      : "Ganti seluruh data di perangkat ini dengan data terbaru dari awan?")) return;
+  }
   sync.sibuk = true; sync.error = null; segarkanStatusAwan();
   try{
     const [akar, emp, sh, ros, rec] = await Promise.all([

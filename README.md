@@ -224,7 +224,7 @@ bertahap supaya kegagalan di satu tahap tidak merusak absensi yang sedang jalan.
   Sinkronisasi awan**.
 - **Tahap 2 — selesai.** Cermin satu arah dari tablet ke Firestore, foto ikut.
 - **Tahap 3 — selesai.** PC menarik data dari awan untuk ditelaah.
-- Tahap 4 — koreksi dari PC ikut kembali ke tablet.
+- **Tahap 4 — selesai.** Koreksi dari PC diterapkan tablet lewat kotak koreksi.
 
 Tiap perangkat punya **peran** yang disimpan lokal, tidak ikut tersinkron:
 
@@ -235,8 +235,26 @@ Tiap perangkat punya **peran** yang disimpan lokal, tidak ikut tersinkron:
 
 Perangkat yang belum pernah mengirim otomatis berperan **telaah**, sehingga
 perangkat baru tidak bisa menimpa data tablet karena kelalaian. Di peran telaah,
-tombol yang merusak data awan disembunyikan dan muncul peringatan bahwa
-perubahan lokal tidak dikirim.
+tombol yang merusak data awan disembunyikan.
+
+### Kotak koreksi
+
+Sinkronisasi dua arah yang menimpa dokumen sama dari dua perangkat berbahaya
+untuk data gaji: pemenangnya ditentukan jam masing-masing perangkat, dan koreksi
+bisa hilang tanpa jejak bila jamnya berbeda. Karena itu **hanya perangkat utama
+yang pernah menulis catatan resmi.**
+
+PC mengoreksi seperti biasa di antarmuka, lalu menekan **Kirim Koreksi**.
+Perubahannya masuk ke `cafe/main/koreksi` sebagai permintaan berisi jalur
+dokumen, jenis (`set` atau `del`), dan isi barunya. Setiap kali menyinkron,
+tablet menerapkan permintaan yang menunggu ke datanya sendiri, menghapus
+permintaannya, lalu mencerminkan hasilnya ke awan seperti perubahan biasa.
+
+Permintaan yang cacat — tanpa isi, jenis tak dikenal, atau jalur tak sah —
+dilewati, bukan diterapkan; tanpa penjagaan ini permintaan kosong akan
+menyuntikkan catatan absensi kosong. Pengenal dokumen selalu diambil dari jalur,
+bukan dari isi kiriman, sehingga pengenal palsu tidak bisa mengalihkan koreksi ke
+dokumen lain. Foto tetap milik tablet dan tidak pernah ikut dalam koreksi.
 
 Tablet tetap sumber kebenaran; awan hanya salinan, sehingga kegagalan
 sinkronisasi tidak pernah mengganggu absensi. Perubahan dideteksi lewat sidik
