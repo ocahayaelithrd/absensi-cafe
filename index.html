@@ -3190,6 +3190,40 @@ function hitungTertunda(){
   for(const k of Object.keys(sync.hash)) if(!peta[k]) n++;      // yang perlu dihapus di awan
   return n;
 }
+/* Firestore menolak array yang langsung berisi array. Pola wajah karyawan
+   berbentuk array berisi array angka, jadi bagian seperti itu dibungkus menjadi
+   teks JSON sebelum dikirim dan dibuka lagi saat dibaca. Penjaga ini dibuat
+   umum, bukan khusus satu bidang, supaya bidang baru tidak bisa merusak
+   sinkronisasi dengan cara yang sama. Nilai undefined juga dibuang karena
+   Firestore menolaknya. */
+function amankanFirestore(nilai, dalamArray){
+  if(Array.isArray(nilai)){
+    if(dalamArray) return { __json: JSON.stringify(nilai) };
+    return nilai.map(v => amankanFirestore(v, true));
+  }
+  if(nilai && typeof nilai === "object"){
+    const out = {};
+    for(const k of Object.keys(nilai)){
+      if(nilai[k] === undefined) continue;
+      out[k] = amankanFirestore(nilai[k], false);
+    }
+    return out;
+  }
+  return nilai === undefined ? null : nilai;
+}
+function pulihkanFirestore(nilai){
+  if(Array.isArray(nilai)) return nilai.map(pulihkanFirestore);
+  if(nilai && typeof nilai === "object"){
+    if(typeof nilai.__json === "string"){
+      try{ return JSON.parse(nilai.__json); }catch(e){ return null; }
+    }
+    const out = {};
+    for(const k of Object.keys(nilai)) out[k] = pulihkanFirestore(nilai[k]);
+    return out;
+  }
+  return nilai;
+}
+
 function refDok(d){
   if(d.jenis === "settings") return AKAR();
   const koleksi = { emp:"employees", shift:"shifts", roster:"roster", rec:"records" }[d.jenis];
@@ -3215,16 +3249,20 @@ async function dorongKeAwan(manual){
         for(const k of tulis.slice(i, i + potong)){
           const d = peta[k];
           let data;
-          if(d.jenis === "settings")      data = { settings: db.settings, updatedAt: stempel };
-          else if(d.jenis === "roster")   data = { hari: d.isi, updatedAt: stempel };
+          if(d.jenis === "settings")      data = { settings: db.settings };
+          else if(d.jenis === "roster")   data = { hari: d.isi };
           else if(d.jenis === "rec"){
-            data = Object.assign({}, d.isi, { updatedAt: stempel });
+            data = Object.assign({}, d.isi);
             // foto ditanam di dokumennya, sekitar 5 KB per lembar
             if(d.isi.hasIn)  data.fotoMasuk  = (await photoGet(d.isi.id + ":in"))  || null;
             if(d.isi.hasOut) data.fotoPulang = (await photoGet(d.isi.id + ":out")) || null;
           }
-          else data = Object.assign({}, d.isi, { updatedAt: stempel });
-          batch.set(refDok(d), data, { merge:false });
+          else data = Object.assign({}, d.isi);
+          // disaring dulu, baru stempel waktu server disisipkan — sentinel itu
+          // objek khusus yang akan rusak kalau ikut ditelusuri penjaga
+          const bersih = amankanFirestore(data, false);
+          bersih.updatedAt = stempel;
+          batch.set(refDok(d), bersih, { merge:false });
         }
         await batch.commit();
         for(const k of tulis.slice(i, i + potong)) sync.hash[k] = peta[k].sidik;
