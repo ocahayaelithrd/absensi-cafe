@@ -223,8 +223,20 @@ bertahap supaya kegagalan di satu tahap tidak merusak absensi yang sedang jalan.
 - **Tahap 1 — selesai.** Login akun cafe dan panel status di **Setelan →
   Sinkronisasi awan**.
 - **Tahap 2 — selesai.** Cermin satu arah dari tablet ke Firestore, foto ikut.
-- Tahap 3 — tampilan telaah di PC.
+- **Tahap 3 — selesai.** PC menarik data dari awan untuk ditelaah.
 - Tahap 4 — koreksi dari PC ikut kembali ke tablet.
+
+Tiap perangkat punya **peran** yang disimpan lokal, tidak ikut tersinkron:
+
+| Peran | Perilaku |
+| --- | --- |
+| **Utama** | Tablet kios. Mengirim perubahannya ke awan. |
+| **Telaah** | PC admin. Hanya membaca; tidak pernah menulis ke awan. |
+
+Perangkat yang belum pernah mengirim otomatis berperan **telaah**, sehingga
+perangkat baru tidak bisa menimpa data tablet karena kelalaian. Di peran telaah,
+tombol yang merusak data awan disembunyikan dan muncul peringatan bahwa
+perubahan lokal tidak dikirim.
 
 Tablet tetap sumber kebenaran; awan hanya salinan, sehingga kegagalan
 sinkronisasi tidak pernah mengganggu absensi. Perubahan dideteksi lewat sidik

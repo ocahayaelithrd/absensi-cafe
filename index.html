@@ -1534,6 +1534,9 @@ function viewAdmin(){
     </div></div>`;
   }
   return `
+  ${!perangkatUtama() && fb.user ? `<div class="note warn" style="margin-bottom:12px">
+    <b>Perangkat telaah.</b> Perubahan yang Anda buat di sini <b>tidak dikirim ke awan</b> dan akan
+    hilang saat menarik data lagi. Untuk mengoreksi absensi, lakukan di tablet kios.</div>` : ""}
   <div class="seg">
     ${[["jadwal","Jadwal"],["rekap","Rekap"],["karyawan","Orang"],["setelan","Setelan"]].map(([k,l]) =>
       `<button data-act="sec" data-sec="${k}" aria-current="${adminSec===k}">${l}</button>`).join("")}
@@ -2206,7 +2209,16 @@ function secSetelan(){
   ${fb.user ? (() => {
     const tertunda = hitungTertunda();
     return `
+    <div class="field" style="margin-top:12px"><label for="speran">Peran perangkat ini</label>
+      <select id="speran" data-act="setperan">
+        <option value="utama" ${perangkatUtama() ? "selected" : ""}>Utama — tablet kios, mengirim ke awan</option>
+        <option value="telaah" ${!perangkatUtama() ? "selected" : ""}>Telaah — PC admin, hanya membaca</option>
+      </select>
+      <span class="hint">${perangkatUtama()
+        ? "Perubahan di perangkat ini dikirim ke awan. Pilih ini hanya untuk tablet kios."
+        : "Perangkat ini tidak pernah menulis ke awan, jadi tidak mungkin menimpa data tablet."}</span></div>
     <div class="stat2" style="margin-top:1px">
+      ${perangkatUtama() ? `
       <div class="statrow">
         <span class="dot2 ${sync.sibuk ? "warn" : sync.error ? "off" : tertunda ? "warn" : "ok"}"></span>
         <div class="grow"><div class="statnm">Cermin ke awan</div>
@@ -2216,26 +2228,41 @@ function secSetelan(){
       </div>
       <div class="statrow">
         <span class="dot2 ${sync.lastPush ? "ok" : "warn"}"></span>
-        <div class="grow"><div class="statnm">Terakhir tersinkron</div>
+        <div class="grow"><div class="statnm">Terakhir dikirim</div>
           <div class="statv">${sync.lastPush
             ? new Date(sync.lastPush).toLocaleString("id-ID") : "Belum pernah"}</div></div>
+      </div>` : `
+      <div class="statrow">
+        <span class="dot2 ${sync.lastPull ? "ok" : "warn"}"></span>
+        <div class="grow"><div class="statnm">Terakhir ditarik dari awan</div>
+          <div class="statv">${sync.lastPull
+            ? new Date(sync.lastPull).toLocaleString("id-ID") : "Belum pernah"}</div></div>
       </div>
+      <div class="statrow">
+        <span class="dot2 ok"></span>
+        <div class="grow"><div class="statnm">Isi perangkat ini</div>
+          <div class="statv">${db.employees.length} karyawan · ${db.records.length} catatan</div></div>
+      </div>`}
     </div>
     ${sync.error ? `<div class="note warn" style="margin-top:10px">Galat sinkronisasi:<br>
       <span class="mono" style="font-size:11px;overflow-wrap:anywhere">${esc(sync.error)}</span></div>` : ""}
     ${fb.persistErr ? `<div class="hint" style="margin-top:8px">Catatan: penyimpanan luring Firestore
       tidak aktif (${esc(fb.persistErr)}). Sinkronisasi tetap jalan saat ada internet.</div>` : ""}
     <div class="btnrow" style="margin-top:10px">
-      <button class="btn pri" data-act="fbsync" ${sync.sibuk ? "disabled" : ""}>Sinkronkan Sekarang</button>
+      ${perangkatUtama()
+        ? `<button class="btn pri" data-act="fbsync" ${sync.sibuk ? "disabled" : ""}>Sinkronkan Sekarang</button>`
+        : `<button class="btn pri" data-act="fbtarik" ${sync.sibuk ? "disabled" : ""}>Tarik dari Awan</button>`}
       <button class="btn ghost" data-act="fbkeluar">Keluar</button>
     </div>
-    <div class="hint" style="margin-top:8px">Tablet adalah sumber kebenaran; awan hanya salinan.
-      Perubahan terkirim otomatis beberapa detik setelah terjadi, dan mengendap dulu bila internet mati.</div>
+    <div class="hint" style="margin-top:8px">${perangkatUtama()
+      ? "Tablet adalah sumber kebenaran; awan hanya salinan. Perubahan terkirim otomatis beberapa detik setelah terjadi, dan mengendap dulu bila internet mati."
+      : "Menarik akan menimpa data di perangkat ini dengan isi awan, termasuk foto bukti. Rekap, jadwal, dan ekspor Excel lalu bisa dibuka seperti biasa."}</div>
+    ${perangkatUtama() ? `
     <div class="sect" style="margin-top:16px"><h2>Jadikan perangkat ini acuan</h2></div>
     <button class="btn dgr blk" data-act="fbtimpa" ${sync.sibuk ? "disabled" : ""}>Timpa Awan dari Perangkat Ini</button>
     <div class="hint" style="margin-top:8px">Menghapus seluruh isi awan lalu mengunggah ulang dari
       perangkat ini. Dipakai sekali saat memindahkan data asli dari tablet, supaya sisa data uji dari
-      perangkat lain tidak bercampur. <b>Data di perangkat ini tidak diubah.</b></div>`;
+      perangkat lain tidak bercampur. <b>Data di perangkat ini tidak diubah.</b></div>` : ""}`;
   })() : `
     <div class="field" style="margin-top:12px"><label for="fbEmail">Email akun cafe</label>
       <input type="email" id="fbEmail" autocomplete="username" inputmode="email"
@@ -2968,6 +2995,7 @@ document.addEventListener("click", async (ev) => {
     case "fbkeluar": keluarAwan(); break;
     case "fbsync": dorongKeAwan(true); break;
     case "fbtimpa": timpaAwanDariSini(); break;
+    case "fbtarik": tarikDariAwan(true); break;
     case "mintapersist": {
       const s = await pastikanPenyimpananPermanen(true);
       render();
@@ -3036,6 +3064,7 @@ document.addEventListener("change", (ev) => {
     save(); render();
     return;
   }
+  if(t.dataset.act === "setperan" && t.value){ setPeran(t.value); return; }
   if(t.dataset.act === "period" && t.value){ period = t.value; render(); return; }
   if(t.id === "restore" && t.files && t.files[0]){ restoreFile(t.files[0]); t.value = ""; return; }
   if(t.dataset.act === "setting" && t.tagName === "SELECT") render();
@@ -3097,7 +3126,10 @@ async function pasangFirebase(){
     catch(e){ fb.persistErr = e.code || e.message; }
     fb.auth.onAuthStateChanged(u => {
       fb.user = u; segarkanStatusAwan();
-      if(u) jadwalkanSync(1500);
+      if(!u) return;
+      // perangkat utama mengirim perubahannya; perangkat telaah menarik yang terbaru
+      if(perangkatUtama()) jadwalkanSync(1500);
+      else setTimeout(() => tarikDariAwan(false), 1500);
     });
     fb.siap = true; fb.error = null;
   }catch(e){
@@ -3152,16 +3184,41 @@ function segarkanStatusAwan(){
    satu pun tempat penyuntingan yang perlu diubah untuk mendukungnya.
    ============================================================ */
 const LS_SYNC = "absensi_cafe_sync";
+const LS_PERAN = "absensi_cafe_peran";
 const AKAR = () => fb.db.collection("cafe").doc("main");
-let sync = { hash:{}, lastPush:0, error:null, sibuk:false, tertunda:null, timer:null };
+let sync = { hash:{}, lastPush:0, lastPull:0, error:null, sibuk:false, timer:null };
+
+/* Peran perangkat disimpan per perangkat, bukan di db, supaya tidak ikut
+   tersinkron dan membuat semua perangkat berperan sama.
+
+   utama  — tablet kios: mendorong perubahannya ke awan.
+   telaah — PC admin: hanya membaca dari awan, tidak pernah menulis, sehingga
+            tidak mungkin menimpa data tablet. */
+let peran = "telaah";
+function loadPeran(){
+  let p = null;
+  try{ p = localStorage.getItem(LS_PERAN); }catch(e){}
+  // perangkat yang sudah pernah mendorong dianggap perangkat utama
+  peran = p || (sync.lastPush > 0 ? "utama" : "telaah");
+}
+function setPeran(p){
+  peran = p;
+  try{ localStorage.setItem(LS_PERAN, p); }catch(e){}
+  render();
+  toast(p === "utama" ? "Perangkat ini kini mengirim ke awan"
+                      : "Perangkat ini kini hanya membaca dari awan");
+}
+const perangkatUtama = () => peran === "utama";
 
 function loadSync(){
   try{ const r = localStorage.getItem(LS_SYNC);
-    if(r){ const p = JSON.parse(r); sync.hash = p.hash || {}; sync.lastPush = p.lastPush || 0; }
+    if(r){ const p = JSON.parse(r);
+      sync.hash = p.hash || {}; sync.lastPush = p.lastPush || 0; sync.lastPull = p.lastPull || 0; }
   }catch(e){}
 }
 function saveSync(){
-  try{ localStorage.setItem(LS_SYNC, JSON.stringify({ hash:sync.hash, lastPush:sync.lastPush })); }
+  try{ localStorage.setItem(LS_SYNC, JSON.stringify({
+    hash:sync.hash, lastPush:sync.lastPush, lastPull:sync.lastPull })); }
   catch(e){ /* penuh: sinkronisasi akan mengulang, tidak merusak apa pun */ }
 }
 const sidik = (s) => { let h = 0x811c9dc5;
@@ -3232,6 +3289,7 @@ function refDok(d){
 
 async function dorongKeAwan(manual){
   if(!fb.siap || !fb.db || !fb.user){ if(manual) toast("Belum masuk ke akun cafe"); return; }
+  if(!perangkatUtama()){ if(manual) toast("Perangkat telaah tidak mengirim ke awan"); return; }
   if(sync.sibuk){ if(manual) toast("Sinkronisasi sedang jalan"); return; }
   sync.sibuk = true; sync.error = null; segarkanStatusAwan();
   try{
@@ -3325,9 +3383,75 @@ async function timpaAwanDariSini(){
 /* Dipanggil dari save(), jadi setiap perubahan ikut terkirim tanpa perlu
    menyisipkan pemanggilan di tiap tempat penyuntingan. */
 function jadwalkanSync(jeda){
-  if(!fb.siap || !fb.user) return;
+  if(!fb.siap || !fb.user || !perangkatUtama()) return;
   clearTimeout(sync.timer);
   sync.timer = setTimeout(() => dorongKeAwan(false), jeda || 5000);
+}
+
+/* ============================================================
+   TAHAP 3 — perangkat telaah menarik data dari awan
+
+   Menimpa seluruh data lokal dengan isi awan. Aman karena perangkat
+   telaah tidak pernah menulis ke awan, jadi tidak ada perubahan lokal
+   yang berharga untuk hilang.
+   ============================================================ */
+function bersihDariAwan(data, id){
+  const o = pulihkanFirestore(data);
+  delete o.updatedAt;                 // Timestamp Firestore, tidak dipakai di lokal
+  o.id = id;
+  return o;
+}
+async function tarikDariAwan(manual){
+  if(!fb.siap || !fb.db || !fb.user){ if(manual) toast("Belum masuk ke akun cafe"); return; }
+  if(sync.sibuk){ if(manual) toast("Sedang sibuk"); return; }
+  if(manual && perangkatUtama()
+    && !confirm("Perangkat ini berperan UTAMA. Menarik dari awan akan menimpa data di perangkat ini.\n\n"
+      + "Biasanya ini tidak diinginkan di tablet kios. Lanjutkan?")) return;
+  if(manual && !perangkatUtama()
+    && !confirm("Ganti seluruh data di perangkat ini dengan data terbaru dari awan?")) return;
+  sync.sibuk = true; sync.error = null; segarkanStatusAwan();
+  try{
+    const [akar, emp, sh, ros, rec] = await Promise.all([
+      AKAR().get(),
+      AKAR().collection("employees").get(),
+      AKAR().collection("shifts").get(),
+      AKAR().collection("roster").get(),
+      AKAR().collection("records").get()
+    ]);
+    if(!akar.exists && emp.empty && rec.empty) throw new Error("awan masih kosong");
+
+    const s = akar.exists ? (pulihkanFirestore(akar.data()).settings || {}) : {};
+    db.settings  = Object.assign({}, DEFAULTS.settings, s);
+    db.employees = emp.docs.map(d => bersihDariAwan(d.data(), d.id));
+    db.shifts    = sh.docs.map(d => bersihDariAwan(d.data(), d.id));
+    db.roster    = {};
+    for(const d of ros.docs) db.roster[d.id] = pulihkanFirestore(d.data()).hari || {};
+
+    db.records = [];
+    let foto = 0;
+    for(const d of rec.docs){
+      const r = bersihDariAwan(d.data(), d.id);
+      const fm = r.fotoMasuk, fp = r.fotoPulang;
+      delete r.fotoMasuk; delete r.fotoPulang;
+      if(fm){ await photoSet(r.id + ":in", fm);  r.hasIn = true;  foto++; } else r.hasIn = false;
+      if(fp){ await photoSet(r.id + ":out", fp); r.hasOut = true; foto++; } else r.hasOut = false;
+      db.records.push(r);
+    }
+    if(!db.shifts.length) db.shifts = JSON.parse(JSON.stringify(DEFAULTS.shifts));
+    bersihkanRoster(); recalcAll();
+
+    // sidik jari disamakan dengan isi awan supaya tidak dianggap perlu dikirim balik
+    const peta = petaDok();
+    sync.hash = {};
+    for(const k of Object.keys(peta)) sync.hash[k] = peta[k].sidik;
+    sync.lastPull = Date.now(); saveSync();
+    save(); render();
+    toast(`Ditarik dari awan · ${db.employees.length} karyawan, ${db.records.length} catatan, ${foto} foto`);
+  }catch(e){
+    sync.error = (e.code || "") + (e.message ? " — " + e.message : "");
+    if(manual) toast("Gagal menarik: " + (e.code || e.message));
+  }
+  sync.sibuk = false; segarkanStatusAwan();
 }
 
 /* ============================================================
@@ -3383,6 +3507,7 @@ const LABEL_PERSIST = { aktif:"Aktif — data dilindungi", belum:"Belum diberika
 
 /* ---------- mulai ---------- */
 loadSync();
+loadPeran();
 loadDB();
 recalcAll();
 render();
