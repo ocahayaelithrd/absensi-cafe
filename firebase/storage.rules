@@ -1,0 +1,33 @@
+rules_version = '2';
+
+/* Foto bukti absen. Jalurnya records/{recordId}/{masuk|pulang}.jpg
+
+   Kios mengunggah, admin membaca dan menghapus. Peran dibaca dari dokumen
+   users/{uid} di Firestore, sama seperti aturan basis data. */
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function peran() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function masuk() {
+      return request.auth != null
+          && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    match /records/{recordId}/{berkas} {
+      allow read: if masuk();
+      allow write: if masuk()
+                   && peran() in ['kiosk', 'admin']
+                   && berkas.matches('(masuk|pulang)\\.jpg')
+                   && request.resource.size < 2 * 1024 * 1024
+                   && request.resource.contentType == 'image/jpeg';
+      allow delete: if masuk() && peran() == 'admin';
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

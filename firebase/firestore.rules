@@ -1,0 +1,93 @@
+rules_version = '2';
+
+/* Aturan akses Absensi Cafe.
+
+   Dua peran, disimpan di dokumen users/{uid} yang hanya bisa dibuat lewat
+   console Firebase. Pendaftaran mandiri dimatikan di console, jadi tidak ada
+   cara membuat akun baru dari luar.
+
+   - kiosk  : tablet di kasir. Boleh membaca data acuan dan menulis absen,
+              tapi tidak boleh mengubah karyawan, shift, jadwal, atau
+              pengaturan — supaya tablet yang dicuri tidak bisa dipakai
+              menaikkan gaji.
+   - admin  : PC admin lewat web. Boleh semuanya, termasuk menghapus. */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function akun() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function masuk() {
+      return request.auth != null
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function admin() {
+      return masuk() && akun().role == 'admin';
+    }
+    function kiosk() {
+      return masuk() && akun().role == 'kiosk';
+    }
+
+    /* Peran hanya boleh dilihat pemiliknya sendiri dan diubah lewat console. */
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    /* Data acuan: dibaca kios, ditulis admin. */
+    match /config/{doc} {
+      allow read: if masuk();
+      allow write: if admin();
+    }
+    match /employees/{id} {
+      allow read: if masuk();
+      allow write: if admin();
+    }
+    match /shifts/{id} {
+      allow read: if masuk();
+      allow write: if admin();
+    }
+    match /roster/{tanggal} {
+      allow read: if masuk();
+      allow write: if admin();
+    }
+
+    /* Absen: kios mencatat, admin mengoreksi, hanya admin yang boleh hapus.
+
+       Kios tidak boleh memindahkan sebuah catatan ke karyawan atau tanggal
+       lain. Setelah absen pulang tercatat, kios juga tidak boleh lagi mengubah
+       jam masuk maupun jam pulangnya — satu-satunya alasan tablet menyentuh
+       catatan yang sudah lengkap adalah menambahkan jalur foto yang baru
+       selesai diunggah setelah internet hidup kembali. */
+    match /records/{id} {
+      function tetap(field) {
+        return request.resource.data[field] == resource.data[field];
+      }
+      function jamTidakBerubah() {
+        return request.resource.data.checkIn.at == resource.data.checkIn.at
+            && request.resource.data.checkOut.at == resource.data.checkOut.at;
+      }
+      allow read: if masuk();
+      allow create: if (kiosk() || admin())
+                    && request.resource.data.employeeId is string
+                    && request.resource.data.date is string;
+      allow update: if admin()
+                    || (kiosk() && tetap('employeeId') && tetap('date')
+                        && (resource.data.checkOut == null || jamTidakBerubah()));
+      allow delete: if admin();
+    }
+
+    /* Catatan perangkat kios: dipakai admin untuk melihat tablet mana yang
+       masih hidup. Tiap tablet hanya menulis dokumennya sendiri. */
+    match /devices/{id} {
+      allow read: if masuk();
+      allow create, update: if kiosk() || admin();
+      allow delete: if admin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

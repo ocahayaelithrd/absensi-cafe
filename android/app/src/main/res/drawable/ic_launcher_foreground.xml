@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Jam dengan centang: absen tercatat pada waktunya. Digambar sebagai vektor
+     supaya ikon tidak perlu berkas PNG dan tetap tajam di semua kerapatan.
+     Isi gambar dijaga di dalam lingkaran aman 66dp di tengah kanvas 108dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- badan jam -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1D8A5E"
+        android:strokeWidth="6"
+        android:pathData="M50,50 m-22,0 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0" />
+
+    <!-- jarum -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1D8A5E"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M50,37 L50,51 L60,57" />
+
+    <!-- centang di sudut bawah kanan -->
+    <path
+        android:fillColor="#0E1A24"
+        android:pathData="M69,69 m-16,0 a16,16 0 1,0 32,0 a16,16 0 1,0 -32,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4CD293"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M61,69 L67,76 L78,63" />
+</vector>

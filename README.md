@@ -1,14 +1,39 @@
 # Absensi Cafe
 
-Aplikasi absensi terpusat untuk karyawan cafe, dijalankan dari **satu HP Android**
-yang diletakkan di dekat kasir. Tanpa server, tanpa akun, dan setelah dipasang
-tetap bisa dibuka meski internet cafe mati.
+Absensi terpusat untuk karyawan cafe, dipecah menjadi dua aplikasi yang berbagi
+satu proyek Firebase:
 
-## Cara kerja
+| Bagian | Untuk siapa | Teknologi |
+| --- | --- | --- |
+| [`android/`](android) | Karyawan — tablet kios di kasir | Kotlin + Jetpack Compose |
+| [`web-admin/`](web-admin) | Admin — dari PC | React + TypeScript + Vite |
+| [`firebase/`](firebase) | Aturan akses dan indeks | Firestore & Cloud Storage rules |
 
-Karyawan mengetuk namanya di layar, memasukkan **PIN pribadi**, lalu kamera depan
-menyala dan mengambil foto selfie. PIN membuktikan siapa yang absen, foto
-menyimpan buktinya, dan geofence memastikan absen dilakukan di cafe.
+Karyawan mengetuk namanya di tablet, memasukkan **PIN pribadi**, lalu kamera
+depan mengambil foto selfie. PIN membuktikan siapa yang absen, foto menyimpan
+buktinya, dan geofence memastikan absen dilakukan di cafe. Admin mengelola
+karyawan, shift, jadwal, dan rekap dari peramban di PC — tidak perlu menyentuh
+tablet sama sekali.
+
+## Pembagian tugas antara dua aplikasi
+
+Tablet **hanya mencatat absen**. Semua yang menentukan angka gaji — daftar
+karyawan, PIN, pola shift, jadwal, tarif denda, titik cafe — hanya bisa diubah
+dari web admin, dan aturan Firestore menolak tulisan dari akun kios ke sana.
+Tablet yang hilang atau dipinjam karyawan karena itu tidak bisa dipakai
+menaikkan gaji siapa pun.
+
+```
+                    Firestore + Storage
+                  (satu proyek Firebase)
+                     ▲              ▲
+       tulis absen   │              │   baca semua, tulis semua
+       baca acuan    │              │
+              ┌──────┴─────┐   ┌────┴────────┐
+              │  Tablet    │   │  Web admin  │
+              │  (kiosk)   │   │  (admin)    │
+              └────────────┘   └─────────────┘
+```
 
 ## Fitur
 
@@ -18,38 +43,102 @@ menyimpan buktinya, dan geofence memastikan absen dilakukan di cafe.
 - **Hitung otomatis** keterlambatan, pulang cepat, durasi kerja, dan lembur
 - **Denda keterlambatan bertingkat** yang tarif dan batas menitnya diatur sendiri
 - **Geotagging & geofencing** — koordinat tersimpan di tiap absen, dengan
-  pembatasan radius area cafe
+  pembatasan radius area cafe dan deteksi aplikasi pemalsu lokasi
 - **Rekap harian & bulanan** per karyawan, termasuk hitungan alpa
-- **Urutan nama A–Z / Z–A** yang berlaku serempak di semua daftar
 - **Ekspor Excel (.xlsx)** tiga lembar untuk perhitungan gaji
-- **Area admin terkunci PIN** — kelola karyawan, koreksi catatan absen yang
-  salah, cadangkan dan pulihkan data
-- **Bekerja luring** — terpasang sebagai aplikasi di layar utama dan tetap
-  terbuka saat internet cafe mati
+- **Koreksi dari PC** — jam yang salah diperbaiki admin, angka turunannya
+  dihitung ulang sendiri
+- **Bekerja luring** — tablet tetap mencatat absen saat internet cafe mati,
+  foto menyusul terunggah begitu jaringan hidup
 
-## Jadwal shift
+## Menyiapkan Firebase
 
-Shift cafe berubah-ubah tiap hari, jadi jadwal disusun sebagai **roster**: satu
-shift untuk satu karyawan pada satu tanggal. Buka **Admin → Jadwal** untuk grid
-mingguan (Senin–Minggu), lalu:
+Proyek yang dipakai adalah **absensi-cafe-8da42**, sama dengan aplikasi versi
+sebelumnya.
 
-- ketuk **satu sel** untuk mengubah sehari,
-- ketuk **nama karyawan** untuk mengisi seminggu sekaligus,
-- ketuk **kepala kolom hari** untuk mengatur semua karyawan pada hari itu,
-- pakai **Salin Minggu Lalu** kalau polanya berulang.
+1. **Matikan pendaftaran mandiri.** Console → Authentication → Settings → *User
+   actions* → hilangkan centang *Enable create (sign-up)*. Tanpa ini siapa pun
+   yang menemukan konfigurasi bisa membuat akun sendiri.
+2. **Buat dua akun** di Authentication → Users, misalnya
+   `kios@cafe.local` dan `admin@cafe.local`.
+3. **Beri peran** dengan membuat dokumen di Firestore secara manual — satu
+   dokumen per akun, id dokumennya adalah UID akun itu:
 
-Tiap sel punya tiga keadaan: shift tertentu, **Libur** (tidak dihitung alpa),
-atau **belum dijadwalkan**. Karyawan tetap bisa absen di hari yang tidak
-dijadwalkan — catatannya tersimpan dan ditandai *di luar jadwal*, tapi telat dan
-lembur tidak dihitung karena tidak ada jam acuan.
+   ```
+   users/{uid-tablet}   { role: "kiosk" }
+   users/{uid-admin}    { role: "admin" }
+   ```
 
-Pola jam kerja diatur di **Kelola Shift**. Bawaannya Pagi 07:00–15:00, Sore
-15:00–23:00, dan Malam 23:00–07:00; semuanya bisa diubah, ditambah, atau
-dihapus. Jam selesai lebih awal dari jam mulai berarti shift lewat tengah malam.
+   Peran inilah yang dibaca aturan Firestore. Akun tanpa dokumen ini tidak bisa
+   membaca apa pun.
+4. **Pasang aturan dan indeks:**
 
-## Keterlambatan dan denda
+   ```bash
+   npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage
+   ```
 
-Telat dihitung otomatis saat karyawan absen masuk, memakai jam shift yang
+Struktur datanya:
+
+```
+config/settings         pengaturan umum, denda, geofence
+employees/{id}          karyawan; PIN disimpan sebagai hash bergaram
+shifts/{id}             pola shift
+roster/{yyyy-MM-dd}     peta id karyawan → id shift atau "off"
+records/{id}            absen, dengan jalur foto ke Cloud Storage
+devices/{id}            catatan tablet yang pernah tersambung
+users/{uid}             peran akun
+```
+
+Foto disimpan di Storage pada `records/{idAbsen}/masuk.jpg` dan `pulang.jpg`.
+
+## Menjalankan web admin
+
+```bash
+cd web-admin
+npm install
+npm run dev
+```
+
+Buka `http://localhost:5173`, masuk dengan akun admin. Untuk menerbitkannya:
+
+```bash
+cd web-admin && npm run build
+npx firebase-tools deploy --only hosting
+```
+
+Halaman pertama yang perlu diisi, berurutan: **Pola Shift** → **Karyawan**
+(beri tiap orang PIN 4 angka) → **Jadwal** → **Pengaturan**.
+
+## Membangun aplikasi Android
+
+Perlu **Android Studio** (JDK 17 sudah termasuk di dalamnya). Gradle wrapper dan
+Android SDK diunduh sendiri saat proyek pertama kali dibuka.
+
+1. Ambil `google-services.json` lebih dulu — lihat
+   [`android/app/GOOGLE-SERVICES.md`](android/app/GOOGLE-SERVICES.md).
+2. Buka folder [`android/`](android) di Android Studio, tunggu sinkronisasi
+   Gradle selesai.
+3. Jalankan ke tablet lewat **Run**, atau buat APK lewat
+   **Build → Build Bundle(s) / APK(s) → Build APK(s)**.
+
+Dari baris perintah, setelah wrapper terbentuk:
+
+```bash
+cd android && ./gradlew assembleDebug
+```
+
+### Memasang di tablet kasir
+
+1. Pasang APK, buka aplikasinya, masuk dengan **akun kios**.
+2. Izinkan **kamera** dan **lokasi** saat diminta.
+3. Ketuk ikon gigi → masukkan PIN penyelia (bawaan `1234`, ganti di web admin) →
+   beri nama kios itu.
+4. Letakkan tablet di dudukan permanen dekat kasir. Layar dijaga tetap menyala
+   selama aplikasi terbuka.
+
+## Cara perhitungan
+
+**Keterlambatan** dihitung saat karyawan absen masuk, memakai jam shift yang
 dijadwalkan pada tanggal itu:
 
 ```
@@ -58,7 +147,7 @@ telat = jam absen masuk − (jam mulai shift + toleransi)     // minimum 0
 
 Toleransi diambil dari pengaturan karyawan bila diisi, kalau kosong ikut
 pengaturan umum. Dari menit telat itu, denda ditentukan lewat tingkatan yang
-bisa diatur di **Admin → Pengaturan → Denda keterlambatan**. Bawaannya:
+diatur di **Pengaturan → Denda keterlambatan**. Bawaannya:
 
 | Telat | Denda |
 | --- | --- |
@@ -66,15 +155,100 @@ bisa diatur di **Admin → Pengaturan → Denda keterlambatan**. Bawaannya:
 | 16–30 menit | Rp 15.000 |
 | Lebih dari 30 menit | Rp 30.000 |
 
-Tingkatan bisa ditambah, dihapus, dan diubah tarifnya; urutannya dirapikan
-otomatis. Telat 0 menit tidak pernah kena denda. Denda dihitung saat ditampilkan,
-bukan disimpan di catatan absen, sehingga perubahan tarif langsung berlaku
-konsisten di seluruh rekap. Seluruh fitur denda bisa dimatikan lewat satu sakelar
-— saat mati, kolomnya hilang dari rekap maupun Excel.
+Denda **dihitung saat ditampilkan**, bukan disimpan di catatan absen, sehingga
+perubahan tarif langsung berlaku konsisten di seluruh rekap dan ekspor. Seluruh
+fitur denda bisa dimatikan lewat satu sakelar — saat mati, kolomnya hilang dari
+rekap maupun Excel.
+
+**Lembur** baru dihitung setelah kelebihan jam mencapai ambang yang diatur
+(bawaan 30 menit), supaya merapikan meja lima menit tidak menjadi upah lembur.
+
+**Alpa** dihitung dari roster, bukan dari catatan absen: tanpa jadwal, hari
+tanpa catatan tidak bisa dibedakan antara bolos dan memang libur. Hari libur dan
+hari yang belum dijadwalkan tidak pernah dihitung alpa.
+
+Aturan yang sama ditulis dua kali — di
+[`AttendanceRules.kt`](android/app/src/main/java/id/omi/absensicafe/domain/AttendanceRules.kt)
+untuk tablet dan di [`rules.ts`](web-admin/src/lib/rules.ts) untuk web, karena
+keduanya harus bisa menghitung sendiri: tablet saat mencatat absen tanpa
+internet, web saat admin mengoreksi jam. Kalau salah satu berubah, keduanya
+harus ikut berubah. Perilakunya dikunci oleh
+[`AttendanceRulesTest.kt`](android/app/src/test/java/id/omi/absensicafe/domain/AttendanceRulesTest.kt).
+
+## Jadwal shift
+
+Shift cafe berubah-ubah tiap hari, jadi jadwal disusun sebagai **roster**: satu
+shift untuk satu karyawan pada satu tanggal. Di halaman **Jadwal**:
+
+- ketuk **satu sel** untuk mengubah sehari,
+- ketuk **nama karyawan** untuk mengisi seminggu sekaligus,
+- ketuk **kepala kolom hari** untuk mengatur semua karyawan pada hari itu,
+- pakai **Salin Minggu Lalu** kalau polanya berulang — sel yang sudah terisi
+  minggu ini tidak ditimpa.
+
+Tiap sel punya tiga keadaan: shift tertentu, **Libur** (tidak dihitung alpa),
+atau **belum dijadwalkan**. Karyawan tetap bisa absen di hari yang tidak
+dijadwalkan — catatannya tersimpan dan ditandai *di luar jadwal*, tapi telat dan
+lembur tidak dihitung karena tidak ada jam acuan.
+
+Jam selesai yang lebih awal dari jam mulai berarti shift lewat tengah malam.
+Karyawan shift malam yang datang pukul 00:30 tetap tercatat pada tanggal
+kemarin, bukan tanggal baru.
+
+## PIN karyawan
+
+Setiap karyawan punya PIN 4 angka yang diminta sebelum kamera menyala. PIN
+diatur admin di halaman **Karyawan**, tidak boleh sama antar karyawan, dan
+langsung ditolak kalau bentrok.
+
+- **PIN benar** → lanjut berfoto, catatan bersih.
+- **Salah 3 kali** → ditawarkan izin penyelia; kalau dipakai, catatannya
+  ditandai *izin penyelia*.
+- **Dibatalkan** → tidak ada yang tercatat, kamera tidak menyala.
+- **PIN belum diatur** → karyawan tetap bisa absen supaya shift pagi tidak
+  macet, tapi catatannya ditandai *tanpa PIN* dan admin diberi peringatan
+  berisi nama-namanya.
+
+PIN tidak pernah disimpan apa adanya. Yang tersimpan adalah hasil
+**PBKDF2-HMAC-SHA256 120.000 putaran** dengan garam acak per karyawan — empat
+angka saja terlalu sedikit untuk hash cepat, yang bisa ditebak habis dalam
+hitungan detik kalau isinya bocor. Web membuat hash lewat WebCrypto
+([`pin.ts`](web-admin/src/lib/pin.ts)), tablet memeriksanya lewat
+`SecretKeyFactory` ([`Pin.kt`](android/app/src/main/java/id/omi/absensicafe/domain/Pin.kt));
+karena parameternya sama persis, PIN yang dibuat di PC bisa diperiksa di tablet
+tanpa jaringan.
+
+Karena hash-nya bergaram, PIN bentrok tidak bisa dicari dengan membandingkan
+nilai — web menghitung ulang PIN calon dengan garam tiap karyawan saat admin
+menyimpan.
+
+## Lokasi absen
+
+Setiap absen menyimpan koordinat GPS beserta akurasinya dan jarak ke titik cafe.
+Titik lokasi diatur di **Pengaturan → Lokasi absen**. Tiga mode tersedia:
+
+| Mode | Perilaku |
+| --- | --- |
+| Wajib di area | Absen ditahan bila di luar radius atau GPS mati, kecuali diloloskan penyelia lewat PIN |
+| Peringatan saja | Absen tetap tercatat, ditandai bila di luar radius |
+| Nonaktif | Tanpa pembatasan; koordinat tetap disimpan bila titik cafe sudah diisi |
+
+Saat kamera menyala, lokasi dicari berbarengan agar sudah dapat sinyal ketika
+foto diambil, dan statusnya tampil sebagai bilah di bawah kamera. Lokasi yang
+berasal dari aplikasi pemalsu ditandai *lokasi palsu* dan, pada mode wajib,
+ditahan seperti absen di luar area.
+
+**Menentukan radius.** GPS di dalam ruangan biasanya meleset 20–50 meter, kadang
+lebih. Radius di bawah 50 meter cenderung menolak karyawan yang sebenarnya sudah
+berada di cafe. Titik yang paling tepat diambil dari tablet yang berdiri di
+kasir, bukan dari PC di ruang belakang.
+
+Koordinat, akurasi, dan jarak ikut terekspor ke Excel. Di rincian catatan absen,
+tiap titik bisa dibuka di Google Maps.
 
 ## Ekspor
 
-Ekspor hanya menghasilkan **Excel (.xlsx)**, satu berkas berisi tiga lembar:
+Ekspor menghasilkan satu berkas **.xlsx** berisi tiga lembar:
 
 | Lembar | Isi |
 | --- | --- |
@@ -82,240 +256,37 @@ Ekspor hanya menghasilkan **Excel (.xlsx)**, satu berkas berisi tiga lembar:
 | Detail | Satu baris per catatan absen, lengkap dengan shift, denda, dan koordinat |
 | Info | Periode, waktu ekspor, dan seluruh pengaturan yang berlaku saat itu |
 
-Angka ditulis sebagai angka sungguhan dengan format sel — rupiah, bilangan bulat,
-desimal, dan koordinat enam angka di belakang koma — sehingga langsung bisa
-dijumlahkan atau dijadikan pivot tanpa dibersihkan dulu. Baris kepala dibekukan
-dan diberi filter otomatis.
+Angka ditulis sebagai angka sungguhan dengan format sel — rupiah, bilangan
+bulat, jam desimal, dan koordinat enam angka di belakang koma — sehingga
+langsung bisa dijumlahkan atau dijadikan pivot tanpa dibersihkan dulu. Baris
+kepala dibekukan dan diberi filter otomatis.
 
-Berkasnya dirakit sendiri di dalam aplikasi: XML SpreadsheetML dikemas ke ZIP
-dengan CRC-32 buatan sendiri dan kompresi lewat `CompressionStream("deflate-raw")`
-bawaan browser, dengan cadangan tanpa kompresi bila API itu tidak tersedia. Tidak
-ada library luar, sesuai sifat aplikasi yang satu berkas dan bekerja luring.
+## Luring
 
-Terpisah dari ekspor, tombol **Cadangkan (ZIP)** di Setelan menyimpan seluruh data
-sebagai satu berkas zip:
+Tablet memakai simpanan lokal Firestore tanpa batas ukuran, jadi setelah sekali
+tersinkron aplikasinya tetap jalan penuh saat internet cafe mati: daftar
+karyawan, jadwal, dan PIN semuanya dibaca dari simpanan, dan absen baru
+tersimpan lokal lalu dikirim sendiri begitu jaringan hidup.
 
-```
-cadangan-absensi-2026-08-12.zip
-├── data.json                        pengaturan, karyawan, shift, roster, absen
-├── foto/2026-08-12_r1_masuk.jpg     satu berkas per foto, dinamai per tanggal
-└── BACA-SAYA.txt
-```
+Penulisan ke Firestore sengaja tidak ditunggu selesai. Saat luring, penulisan
+baru rampung setelah tersambung lagi — menunggunya akan menggantung layar
+karyawan tanpa alasan, padahal catatannya sudah aman tersimpan di tablet.
 
-Zip itu bisa dibuka langsung di PC untuk menelusuri foto bukti tanpa perlu
-aplikasi ini, atau dimuat kembali lewat tombol **Pulihkan**. Pemulihan juga masih
-menerima cadangan JSON versi lama, dan catatan yang fotonya tidak ada di cadangan
-otomatis berhenti mengaku punya foto.
+Foto adalah satu-satunya bagian yang butuh jaringan sungguhan, karena Cloud
+Storage tidak punya antrean luring. Karena itu foto disimpan ke berkas lokal
+dulu, dan `PhotoUploadWorker` yang mengantarkannya kapan pun ada internet —
+dengan pengulangan bertahap yang bertahan melewati tablet dinyalakan ulang. Di
+web admin, foto yang belum sampai tampil sebagai *menunggu unggah*; itu keadaan
+normal, bukan kesalahan.
 
-## Urutan nama
+## Keamanan data
 
-Semua daftar karyawan diurutkan menurut nama: layar absen, grid jadwal, daftar
-orang, tabel rekap, pilihan absen manual, dan ekspor Excel. Arahnya diubah lewat
-tombol **Nama A–Z** di layar absen dan daftar orang, atau dengan mengetuk kolom
-**Karyawan** pada tabel jadwal dan rekap. Satu pilihan berlaku serempak di semua
-layar dan tersimpan di HP.
+Nilai di [`web-admin/src/firebase.ts`](web-admin/src/firebase.ts) memang publik;
+`apiKey` Firebase bukan kunci rahasia melainkan pengenal proyek. Pengaman
+datanya tiga: pendaftaran mandiri dimatikan di console, akses dikunci ke akun
+yang punya dokumen `users/{uid}`, dan peran kios dibatasi hanya boleh menulis
+absen.
 
-Pengurutan mengabaikan huruf besar-kecil dan tanda aksen, serta membaca angka
-secara numerik — sehingga *Budi 2* berada sebelum *Budi 10*, bukan sesudahnya.
-
-## Lokasi absen
-
-Setiap absen menyimpan koordinat GPS beserta akurasinya dan jarak ke titik cafe.
-Titik lokasi diatur di **Admin → Setelan → Lokasi absen**: berdiri di cafe lalu
-tekan **Pakai Lokasi Saat Ini**, atau isi lintang dan bujur secara manual.
-
-Tiga mode tersedia:
-
-| Mode | Perilaku |
-| --- | --- |
-| Wajib di area | Absen ditolak bila di luar radius atau GPS mati, kecuali disetujui admin lewat PIN |
-| Peringatan saja | Absen tetap tercatat, ditandai bila di luar radius |
-| Nonaktif | Tanpa pembatasan; koordinat tetap disimpan bila titik cafe sudah diisi |
-
-Saat kamera menyala, lokasi dicari berbarengan agar sudah dapat sinyal ketika
-foto diambil, dan statusnya tampil sebagai bilah di bawah kamera.
-
-**Menentukan radius.** GPS di dalam ruangan biasanya meleset 20–50 meter, kadang
-lebih. Radius di bawah 50 meter cenderung menolak karyawan yang sebenarnya sudah
-berada di cafe. Pakai **Uji Jarak** beberapa kali dari titik-titik berbeda di
-dalam cafe, ambil jarak terbesar yang muncul, lalu tambahkan margin akurasi.
-
-Koordinat, akurasi, dan jarak ikut terekspor ke Excel. Di rincian catatan absen,
-tiap titik bisa dibuka di Google Maps. Semua data lokasi tersimpan di HP itu
-saja dan tidak dikirim ke mana pun.
-
-## PIN karyawan
-
-Setiap karyawan punya PIN 4 angka yang diminta sebelum kamera menyala. PIN diatur
-admin di **Orang**, tidak boleh sama antar karyawan, dan langsung ditolak kalau
-bentrok.
-
-- **PIN benar** → lanjut berfoto, catatan bersih.
-- **Salah 3 kali** → ditawarkan izin admin; kalau dipakai, catatannya ditandai
-  *izin admin*.
-- **Dibatalkan** → tidak ada yang tercatat, kamera tidak menyala.
-- **PIN belum diatur** → karyawan tetap bisa absen supaya shift pagi tidak macet,
-  tapi catatannya ditandai *tanpa PIN* dan admin diberi peringatan berisi
-  nama-namanya.
-
-Penanda itu muncul di aktivitas harian, rincian karyawan, dan kolom **PIN Masuk**
-serta **PIN Pulang** pada lembar Detail di Excel.
-
-## Verifikasi wajah
-
-> **Fitur ini nonaktif secara bawaan dan sebaiknya dibiarkan begitu.**
-> Pengukuran menunjukkan wajah yang benar bisa ditolak hanya karena orangnya
-> berdiri sedikit bergeser atau lebih tinggi daripada saat mendaftar — pada
-> pengujian, kepala bergeser ke samping saja menjatuhkan kecocokan ke 0%.
-> Menambah toleransi posisi justru menaikkan skor orang lain sampai melewati
-> ambang, jadi tidak ada setelan yang memisahkan keduanya. Pengenalan wajah yang
-> akurat memerlukan model terlatih, yang tidak tersedia di aplikasi satu berkas
-> tanpa dependensi ini. Gunakan **PIN karyawan** di atas.
-
-Pencocokan berjalan sepenuhnya di HP, tanpa mengirim foto ke mana pun. Metodenya
-deskriptor HOG (6×6 sel × 8 arah) digabung peta intensitas 12×12, dibandingkan
-dengan tiga foto yang didaftarkan per karyawan memakai kemiripan kosinus.
-Deteksi wajah memakai `FaceDetector` bawaan Chrome Android bila tersedia, dengan
-oval panduan sebagai cadangan.
-
-**Kebal jarak berdiri.** Deskriptor HOG peka terhadap skala: wajah yang sama,
-difoto dari jarak berbeda, menghasilkan pola gradien yang berbeda jauh. Karena
-itu setiap absen dibandingkan pada tujuh perbesaran sekaligus, lalu diambil yang
-paling cocok. Perbesaran pemenang juga dipakai menjelaskan hasilnya — kalau yang
-menang adalah potongan yang diperbesar, berarti orangnya berdiri lebih jauh
-daripada saat mendaftar, dan aplikasi menyarankan maju.
-
-Pengukuran dengan wajah sintetis pada empat jarak berbeda: tanpa pembandingan
-lintas skala, orang yang benar bisa jatuh ke 0–15%; dengan pembandingan, hasilnya
-74–100%, sementara tiga wajah berbeda tetap di 44–54%. Geseran tegak sempat
-dicoba tetapi tidak menambah akurasi sama sekali dan justru memperbesar peluang
-orang lain ikut lolos, jadi tidak dipakai.
-
-Cara pengukuran ini tidak sebanding dengan versi sebelumnya. Wajah yang
-didaftarkan sebelum perubahan ditandai **daftar ulang** dan tidak dipakai
-membandingkan, supaya tidak menghasilkan skor yang menyesatkan.
-
-Ini **verifikasi**, bukan pengenalan wajah tingkat keamanan tinggi. Akurasinya
-bergantung pada posisi HP dan pencahayaan yang konsisten. Tiga mode tersedia di
-Pengaturan: wajib cocok, peringatan saja, atau nonaktif.
-
-## Pemasangan
-
-1. Buka halaman ini di Chrome pada HP cafe, sambil terhubung internet sekali
-   agar aplikasinya tersimpan untuk dipakai luring.
-2. Menu Chrome → **Tambahkan ke layar Utama**, lalu buka dari layar utama.
-3. Izinkan akses **kamera** dan **lokasi** saat diminta, dan tekan **Minta Izin**
-   di **Setelan → Luring & ketahanan data** agar data tidak boleh dibuang Chrome.
-4. Buka tab **Admin** (PIN bawaan `1234`), lalu:
-   - ganti PIN di **Setelan**,
-   - tambahkan karyawan di **Orang**, dan beri tiap orang **PIN 4 angka**,
-   - sesuaikan pola shift lewat **Jadwal → Kelola Shift**,
-   - susun roster minggu ini di **Jadwal**,
-   - atur titik cafe dan radius di **Setelan → Lokasi absen**.
-
-Letakkan HP di dudukan permanen di dekat kasir.
-
-## Sinkronisasi awan (dalam pengerjaan)
-
-Agar admin bisa membuka rekap dari PC, data akan dicerminkan ke Firebase. Dibangun
-bertahap supaya kegagalan di satu tahap tidak merusak absensi yang sedang jalan.
-
-- **Tahap 1 — selesai.** Login akun cafe dan panel status di **Setelan →
-  Sinkronisasi awan**.
-- **Tahap 2 — selesai.** Cermin satu arah dari tablet ke Firestore, foto ikut.
-- **Tahap 3 — selesai.** PC menarik data dari awan untuk ditelaah.
-- **Tahap 4 — selesai.** Koreksi dari PC diterapkan tablet lewat kotak koreksi.
-
-Tiap perangkat punya **peran** yang disimpan lokal, tidak ikut tersinkron:
-
-| Peran | Perilaku |
-| --- | --- |
-| **Utama** | Tablet kios. Mengirim perubahannya ke awan. |
-| **Telaah** | PC admin. Hanya membaca; tidak pernah menulis ke awan. |
-
-Perangkat yang belum pernah mengirim otomatis berperan **telaah**, sehingga
-perangkat baru tidak bisa menimpa data tablet karena kelalaian. Di peran telaah,
-tombol yang merusak data awan disembunyikan.
-
-### Kotak koreksi
-
-Sinkronisasi dua arah yang menimpa dokumen sama dari dua perangkat berbahaya
-untuk data gaji: pemenangnya ditentukan jam masing-masing perangkat, dan koreksi
-bisa hilang tanpa jejak bila jamnya berbeda. Karena itu **hanya perangkat utama
-yang pernah menulis catatan resmi.**
-
-PC mengoreksi seperti biasa di antarmuka, lalu menekan **Kirim Koreksi**.
-Perubahannya masuk ke `cafe/main/koreksi` sebagai permintaan berisi jalur
-dokumen, jenis (`set` atau `del`), dan isi barunya. Setiap kali menyinkron,
-tablet menerapkan permintaan yang menunggu ke datanya sendiri, menghapus
-permintaannya, lalu mencerminkan hasilnya ke awan seperti perubahan biasa.
-
-Permintaan yang cacat — tanpa isi, jenis tak dikenal, atau jalur tak sah —
-dilewati, bukan diterapkan; tanpa penjagaan ini permintaan kosong akan
-menyuntikkan catatan absensi kosong. Pengenal dokumen selalu diambil dari jalur,
-bukan dari isi kiriman, sehingga pengenal palsu tidak bisa mengalihkan koreksi ke
-dokumen lain. Foto tetap milik tablet dan tidak pernah ikut dalam koreksi.
-
-Tablet tetap sumber kebenaran; awan hanya salinan, sehingga kegagalan
-sinkronisasi tidak pernah mengganggu absensi. Perubahan dideteksi lewat sidik
-jari isi dokumen, jadi tidak ada satu pun tempat penyuntingan yang perlu diubah
-untuk mendukungnya, dan tidak ada foto yang dibaca ulang kecuali dokumennya
-memang perlu dikirim.
-
-Struktur di Firestore:
-
-```
-cafe/main                  pengaturan
-cafe/main/employees/{id}   karyawan, termasuk PIN
-cafe/main/shifts/{id}      pola shift
-cafe/main/roster/{tanggal} peta karyawan → shift
-cafe/main/records/{id}     absen, foto masuk & pulang ditanam di dalamnya
-```
-
-Aksesnya dikunci ke satu UID lewat aturan Firestore, dan pendaftaran mandiri
-dimatikan di console — jadi meski `firebase-config.js` publik, data cafe tidak
-bisa dibaca orang lain.
-
-SDK Firebase disimpan di [`vendor/`](vendor) dan dimuat dari repo, bukan dari CDN,
-serta ikut di-cache service worker — supaya aplikasi tetap terbuka saat internet
-mati. SDK juga dimuat **setelah** aplikasi tampil, sehingga absensi tidak pernah
-tertunda atau rusak kalau SDK gagal dimuat.
-
-Nilai di [`firebase-config.js`](firebase-config.js) memang publik; `apiKey` Firebase
-bukan kunci rahasia melainkan pengenal proyek. Pengaman datanya dua: pendaftaran
-mandiri dimatikan di console Firebase, dan aturan akses Firestore hanya
-mengizinkan akun cafe yang sah.
-
-## Luring & ketahanan data
-
-Aplikasi memasang **service worker** ([`sw.js`](sw.js)) yang menyimpan berkasnya
-di HP, sehingga tetap terbuka saat wifi cafe mati. Absen yang dicatat selama
-luring tersimpan normal — tidak ada langkah yang butuh jaringan, termasuk ekspor
-Excel yang seluruhnya dirakit di HP.
-
-Strateginya *cache-first* dengan pembaruan latar belakang: halaman tampil
-seketika dari simpanan, versi baru diambil diam-diam, lalu dipakai pada
-pembukaan berikutnya. Pembaruan latar belakang memakai `cache: "no-cache"`
-supaya tidak tertahan cache HTTP — GitHub Pages mengirim `max-age=600`, dan
-tanpa itu versi baru bisa telat sampai sepuluh menit. Untuk memaksa segera,
-tekan **Perbarui Aplikasi** di Setelan.
-
-Aplikasi juga meminta **penyimpanan permanen** (`navigator.storage.persist()`)
-setiap kali dibuka. Tanpa izin ini Chrome boleh membuang `localStorage` dan
-`IndexedDB` saat memori HP sesak. Izinnya biasanya baru diberikan setelah
-aplikasi dipasang ke layar utama, jadi pasang dulu lalu tekan **Minta Izin**.
-Status keduanya terlihat di **Setelan → Luring & ketahanan data**.
-
-Berkas [`manifest.webmanifest`](manifest.webmanifest) membuat "Tambahkan ke layar
-Utama" menghasilkan aplikasi layar penuh, bukan sekadar pintasan. Ikonnya
-dibangkitkan secara prosedural sebagai PNG, tanpa perkakas gambar.
-
-## Data
-
-Semua data tersimpan di HP itu saja — pengaturan dan catatan absen di
-`localStorage`, foto di `IndexedDB`. Tidak ada server dan tidak ada akun.
-Aplikasi tidak punya satu pun `fetch`, `XMLHttpRequest`, atau `WebSocket` ke
-layanan luar; satu-satunya data yang bisa keluar adalah koordinat yang Anda
-kirim sendiri saat mengetuk tautan peta.
-Ekspor Excel setiap tutup buku dan gunakan **Cadangkan (ZIP)** secara berkala;
-bila HP hilang atau di-reset, datanya ikut hilang.
+Setelah absen pulang tercatat, kios tidak boleh lagi mengubah jam masuk maupun
+jam pulangnya — satu-satunya alasan tablet menyentuh catatan yang sudah lengkap
+adalah menambahkan jalur foto yang baru selesai diunggah.
