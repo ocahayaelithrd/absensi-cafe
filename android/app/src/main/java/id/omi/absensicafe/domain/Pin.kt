@@ -40,16 +40,34 @@ object Pin {
         return factory.generateSecret(spec).encoded.toHex()
     }
 
-    /** Perbandingan waktu tetap, supaya lama proses tidak membocorkan tebakan. */
+    /**
+     * Memeriksa PIN terhadap kedua bentuk penyimpanan.
+     *
+     * Data dari aplikasi versi lama menyimpan PIN apa adanya; PIN yang diubah
+     * lewat web admin tersimpan sebagai hash bergaram. Keduanya harus tetap
+     * diterima supaya karyawan tidak perlu berganti PIN serentak saat aplikasi
+     * ini dipasang.
+     *
+     * Perbandingannya berwaktu tetap, supaya lama proses tidak membocorkan
+     * seberapa dekat sebuah tebakan.
+     */
     fun verify(pin: String, employee: Employee): Boolean {
         if (!employee.hasPin || !isValidFormat(pin)) return false
-        val iterations = if (employee.pinIterations > 0) employee.pinIterations else ITERATIONS
-        val calon = hash(pin, employee.pinSalt, iterations)
-        return MessageDigest.isEqual(
-            calon.toByteArray(Charsets.US_ASCII),
-            employee.pinHash.toByteArray(Charsets.US_ASCII)
-        )
+
+        if (employee.pinHash.isNotBlank() && employee.pinSalt.isNotBlank()) {
+            val iterations =
+                if (employee.pinIterations > 0) employee.pinIterations else ITERATIONS
+            val calon = hash(pin, employee.pinSalt, iterations)
+            return sama(calon, employee.pinHash)
+        }
+
+        return employee.plainPin.isNotBlank() && sama(pin, employee.plainPin)
     }
+
+    private fun sama(a: String, b: String): Boolean = MessageDigest.isEqual(
+        a.toByteArray(Charsets.US_ASCII),
+        b.toByteArray(Charsets.US_ASCII)
+    )
 
     private fun ByteArray.toHex(): String =
         joinToString("") { "%02x".format(it) }

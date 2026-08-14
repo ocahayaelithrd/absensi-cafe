@@ -129,8 +129,8 @@ export function recompute(
   settings: Settings,
 ): AttendanceRecord {
   const efektif = record.offSchedule ? null : shift;
-  const masuk = record.checkIn ? record.checkIn.at.toDate() : null;
-  const pulang = record.checkOut ? record.checkOut.at.toDate() : null;
+  const masuk = record.checkIn ? record.checkIn.at : null;
+  const pulang = record.checkOut ? record.checkOut.at : null;
 
   return {
     ...record,

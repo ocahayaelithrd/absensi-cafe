@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { useShifts } from "../hooks/useData";
+import { deleteShift, saveShift } from "../lib/write";
 import { crossesMidnight, minutesOf } from "../lib/rules";
 import { durasi } from "../lib/format";
 import Dialog from "../components/Dialog";
@@ -13,10 +12,9 @@ interface Draft {
   name: string;
   start: string;
   end: string;
-  order: string;
 }
 
-const kosong: Draft = { id: null, code: "", name: "", start: "07:00", end: "15:00", order: "" };
+const kosong: Draft = { id: null, code: "", name: "", start: "07:00", end: "15:00" };
 
 export default function ShiftsPage() {
   const shifts = useShifts();
@@ -44,16 +42,12 @@ export default function ShiftsPage() {
       return;
     }
 
-    const data = {
+    await saveShift(draft.id, {
       code: kode,
       name: nama,
       start: draft.start,
       end: draft.end,
-      order: draft.order.trim() === "" ? minutesOf(draft.start) : Number(draft.order),
-    };
-
-    if (draft.id) await updateDoc(doc(db, "shifts", draft.id), data);
-    else await addDoc(collection(db, "shifts"), data);
+    });
     setDraft(null);
     setError(null);
   }
@@ -62,18 +56,19 @@ export default function ShiftsPage() {
     const pesan =
       `Hapus shift ${s.name}?\n\n` +
       "Sel jadwal yang memakai shift ini akan tampil kosong, dan absen lama " +
-      "tetap menyimpan nama serta jamnya sendiri sehingga rekap lama tidak berubah.";
+      "yang menunjuk ke shift ini akan berubah menjadi di luar jadwal saat " +
+      "dihitung ulang.";
     if (!confirm(pesan)) return;
-    await deleteDoc(doc(db, "shifts", s.id));
+    await deleteShift(s.id);
   }
 
   async function isiBawaan() {
     const bawaan = [
-      { code: "P", name: "Pagi", start: "07:00", end: "15:00", order: 420 },
-      { code: "S", name: "Sore", start: "15:00", end: "23:00", order: 900 },
-      { code: "M", name: "Malam", start: "23:00", end: "07:00", order: 1380 },
+      { code: "P", name: "Pagi", start: "07:00", end: "15:00" },
+      { code: "S", name: "Sore", start: "15:00", end: "23:00" },
+      { code: "M", name: "Malam", start: "23:00", end: "07:00" },
     ];
-    for (const s of bawaan) await addDoc(collection(db, "shifts"), s);
+    for (const s of bawaan) await saveShift(null, s);
   }
 
   return (
@@ -143,7 +138,6 @@ export default function ShiftsPage() {
                             name: s.name,
                             start: s.start,
                             end: s.end,
-                            order: String(s.order),
                           })
                         }
                       >
@@ -210,15 +204,6 @@ export default function ShiftsPage() {
               />
             </label>
           </div>
-
-          <label className="field">
-            <span>Urutan tampil — kosongkan untuk mengikuti jam mulai</span>
-            <input
-              inputMode="numeric"
-              value={draft.order}
-              onChange={(e) => setDraft({ ...draft, order: e.target.value.replace(/\D/g, "") })}
-            />
-          </label>
 
           {error && <div className="notice bad">{error}</div>}
         </Dialog>

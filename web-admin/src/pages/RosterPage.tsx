@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { useEmployees, useRoster, useShifts } from "../hooks/useData";
+import { copyRosterDay, setRoster } from "../lib/write";
 import { addDays, formatDate } from "../lib/rules";
 import { awalMinggu, labelHari, tanggalPanjang } from "../lib/format";
 import Dialog from "../components/Dialog";
@@ -26,54 +25,24 @@ export default function RosterPage() {
 
   async function isi(shiftId: string | null) {
     if (!target) return;
-    const nilai = shiftId === null ? deleteField() : shiftId;
 
-    // Penugasan ditulis sebagai peta bersarang dengan merge, bukan jalur
-    // bertitik: titik baru berarti "masuk ke dalam peta" pada updateDoc, dan
-    // pada setDoc justru membuat field bernama "assign.xxx" secara harfiah.
-    const tulis = async (tanggal: string, employeeIds: string[]) => {
-      const assign: Record<string, unknown> = {};
-      for (const id of employeeIds) assign[id] = nilai;
-      await setDoc(doc(db, "roster", tanggal), { date: tanggal, assign }, { merge: true });
-    };
-
-    if (target.mode === "cell") await tulis(target.date, [target.employeeId]);
-    else if (target.mode === "col") await tulis(target.date, employees.map((e) => e.id));
-    else for (const tanggal of hari) await tulis(tanggal, [target.employeeId]);
+    if (target.mode === "cell") {
+      await setRoster(target.date, [target.employeeId], shiftId);
+    } else if (target.mode === "col") {
+      await setRoster(target.date, employees.map((e) => e.id), shiftId);
+    } else {
+      for (const tanggal of hari) await setRoster(tanggal, [target.employeeId], shiftId);
+    }
 
     setTarget(null);
   }
 
-  /**
-   * Menyalin roster minggu lalu ke minggu yang sedang dibuka.
-   *
-   * Sel yang sudah terisi minggu ini tidak ditimpa: pola shift cafe berulang,
-   * tapi perubahan yang sudah disepakati dengan karyawan lebih penting
-   * daripada polanya.
-   */
+  /** Menyalin roster minggu lalu ke minggu yang sedang dibuka. */
   async function salinMingguLalu() {
     setPesan(null);
     let ditulis = 0;
     for (let i = 0; i < 7; i++) {
-      const sumber = addDays(senin, i - 7);
-      const tujuan = addDays(senin, i);
-      const snap = await getDoc(doc(db, "roster", sumber));
-      if (!snap.exists()) continue;
-      const assign = (snap.data().assign ?? {}) as Record<string, string>;
-      const sudah = roster[tujuan]?.assign ?? {};
-
-      const patch: Record<string, string> = {};
-      for (const [id, shiftId] of Object.entries(assign)) {
-        if (sudah[id] !== undefined) continue;
-        patch[id] = shiftId;
-        ditulis++;
-      }
-      if (Object.keys(patch).length === 0) continue;
-      await setDoc(
-        doc(db, "roster", tujuan),
-        { date: tujuan, assign: patch },
-        { merge: true },
-      );
+      ditulis += await copyRosterDay(addDays(senin, i - 7), addDays(senin, i));
     }
     setPesan(
       ditulis === 0

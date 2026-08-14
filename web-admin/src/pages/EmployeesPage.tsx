@@ -1,27 +1,33 @@
 import { useState } from "react";
-import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { useEmployees, useSettings } from "../hooks/useData";
-import { isValidPinFormat, makePinFields, hashPin } from "../lib/pin";
+import { hashPin, isValidPinFormat, makePinFields } from "../lib/pin";
+import {
+  clearPin,
+  deleteEmployee,
+  employeesWithPlainPin,
+  saveEmployee,
+} from "../lib/write";
 import Dialog from "../components/Dialog";
-import type { Employee } from "../lib/types";
+import { hasPin, type Employee } from "../lib/types";
 
 interface Draft {
   id: string | null;
   name: string;
+  role: string;
   tolerance: string;
   active: boolean;
   pin: string;
-  hasPin: boolean;
+  sudahPunyaPin: boolean;
 }
 
 const kosong: Draft = {
   id: null,
   name: "",
+  role: "",
   tolerance: "",
   active: true,
   pin: "",
-  hasPin: false,
+  sudahPunyaPin: false,
 };
 
 export default function EmployeesPage() {
@@ -31,17 +37,19 @@ export default function EmployeesPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const tanpaPin = employees.filter((e) => e.active && !e.pinHash);
+  const tanpaPin = employees.filter((e) => e.active && !hasPin(e));
+  const pinPolos = employeesWithPlainPin(employees);
 
   function edit(e: Employee) {
     setError(null);
     setDraft({
       id: e.id,
       name: e.name,
+      role: e.role,
       tolerance: e.toleranceMinutes === null ? "" : String(e.toleranceMinutes),
       active: e.active,
       pin: "",
-      hasPin: Boolean(e.pinHash),
+      sudahPunyaPin: hasPin(e),
     });
   }
 
@@ -72,23 +80,16 @@ export default function EmployeesPage() {
       }
 
       const toleransi = draft.tolerance.trim();
-      const data: Record<string, unknown> = {
-        name: nama,
-        active: draft.active,
-        toleranceMinutes: toleransi === "" ? null : Number.parseInt(toleransi, 10),
-      };
-      if (draft.pin) Object.assign(data, await makePinFields(draft.pin));
-
-      if (draft.id) {
-        await updateDoc(doc(db, "employees", draft.id), data);
-      } else {
-        await addDoc(collection(db, "employees"), {
-          pinHash: "",
-          pinSalt: "",
-          pinIterations: 0,
-          ...data,
-        });
-      }
+      await saveEmployee(
+        draft.id,
+        {
+          name: nama,
+          role: draft.role.trim(),
+          toleranceMinutes: toleransi === "" ? null : Number.parseInt(toleransi, 10),
+          active: draft.active,
+        },
+        draft.pin ? await makePinFields(draft.pin) : null,
+      );
       setDraft(null);
     } catch (e) {
       setError(`Gagal menyimpan: ${(e as Error).message}`);
@@ -101,21 +102,17 @@ export default function EmployeesPage() {
     if (!confirm(`Hapus PIN ${e.name}? Dia tetap bisa absen, tapi ditandai tanpa PIN.`)) {
       return;
     }
-    await updateDoc(doc(db, "employees", e.id), {
-      pinHash: "",
-      pinSalt: "",
-      pinIterations: 0,
-    });
+    await clearPin(e.id);
   }
 
   async function hapus(e: Employee) {
     const pesan =
       `Hapus ${e.name} dari daftar karyawan?\n\n` +
-      "Catatan absennya tidak ikut terhapus dan tetap muncul di rekap bulan " +
-      "berjalan. Kalau dia hanya berhenti bekerja, lebih baik dinonaktifkan " +
-      "saja lewat tombol Ubah.";
+      "Catatan absennya tidak ikut terhapus, tapi namanya tidak akan muncul lagi " +
+      "di rekap. Kalau dia hanya berhenti bekerja, lebih baik dinonaktifkan saja " +
+      "lewat tombol Ubah.";
     if (!confirm(pesan)) return;
-    await deleteDoc(doc(db, "employees", e.id));
+    await deleteEmployee(e.id);
   }
 
   return (
@@ -141,11 +138,21 @@ export default function EmployeesPage() {
         </div>
       )}
 
+      {pinPolos.length > 0 && (
+        <div className="notice">
+          PIN {pinPolos.map((e) => e.name).join(", ")} masih tersimpan apa adanya
+          dari aplikasi versi lama. PIN-nya tetap berfungsi; begitu Anda
+          mengubahnya lewat tombol <strong>Ubah</strong>, yang tersimpan berganti
+          menjadi hash bergaram yang tidak bisa dibaca balik.
+        </div>
+      )}
+
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Karyawan</th>
+              <th>Jabatan</th>
               <th>PIN</th>
               <th className="num">Toleransi</th>
               <th>Status</th>
@@ -155,7 +162,7 @@ export default function EmployeesPage() {
           <tbody>
             {employees.length === 0 && (
               <tr>
-                <td colSpan={5} className="center muted">
+                <td colSpan={6} className="center muted">
                   Belum ada karyawan.
                 </td>
               </tr>
@@ -163,9 +170,12 @@ export default function EmployeesPage() {
             {employees.map((e) => (
               <tr key={e.id}>
                 <td>{e.name}</td>
+                <td className="muted">{e.role || "—"}</td>
                 <td>
                   {e.pinHash ? (
                     <span className="tag good">terpasang</span>
+                  ) : e.plainPin ? (
+                    <span className="tag warn">tersimpan polos</span>
                   ) : (
                     <span className="tag bad">belum diatur</span>
                   )}
@@ -189,7 +199,7 @@ export default function EmployeesPage() {
                     <button className="small" onClick={() => edit(e)}>
                       Ubah
                     </button>
-                    {e.pinHash && (
+                    {hasPin(e) && (
                       <button className="small" onClick={() => void hapusPin(e)}>
                         Hapus PIN
                       </button>
@@ -218,25 +228,37 @@ export default function EmployeesPage() {
             </>
           }
         >
-          <label className="field">
-            <span>Nama</span>
-            <input
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              autoFocus
-            />
-          </label>
+          <div className="grid cols-2">
+            <label className="field">
+              <span>Nama</span>
+              <input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                autoFocus
+              />
+            </label>
+            <label className="field">
+              <span>Jabatan</span>
+              <input
+                value={draft.role}
+                placeholder="Barista"
+                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
+              />
+            </label>
+          </div>
 
           <label className="field">
             <span>
               PIN 4 angka{" "}
-              {draft.hasPin && <em>— kosongkan untuk membiarkan PIN yang sekarang</em>}
+              {draft.sudahPunyaPin && (
+                <em>— kosongkan untuk membiarkan PIN yang sekarang</em>
+              )}
             </span>
             <input
               inputMode="numeric"
               maxLength={4}
               value={draft.pin}
-              placeholder={draft.hasPin ? "••••" : "mis. 4820"}
+              placeholder={draft.sudahPunyaPin ? "••••" : "mis. 4820"}
               onChange={(e) =>
                 setDraft({ ...draft, pin: e.target.value.replace(/\D/g, "").slice(0, 4) })
               }
@@ -274,9 +296,9 @@ export default function EmployeesPage() {
 /**
  * Mencari karyawan lain yang PIN-nya sama.
  *
- * PIN disimpan sebagai hash bergaram, jadi tidak bisa dibandingkan langsung:
- * setiap karyawan punya garam sendiri, dan PIN calon harus di-hash ulang
- * dengan garam masing-masing untuk diperiksa.
+ * Dua bentuk harus diperiksa sekaligus. PIN lama tersimpan apa adanya sehingga
+ * bisa dibandingkan langsung; PIN baru tersimpan sebagai hash bergaram,
+ * sehingga PIN calon harus di-hash ulang dengan garam milik tiap karyawan.
  */
 async function cariPinBentrok(
   pin: string,
@@ -284,9 +306,12 @@ async function cariPinBentrok(
   kecualiId: string | null,
 ): Promise<Employee | null> {
   for (const e of employees) {
-    if (e.id === kecualiId || !e.pinHash || !e.pinSalt) continue;
-    const calon = await hashPin(pin, e.pinSalt, e.pinIterations || undefined);
-    if (calon === e.pinHash) return e;
+    if (e.id === kecualiId) continue;
+    if (e.plainPin && e.plainPin === pin) return e;
+    if (e.pinHash && e.pinSalt) {
+      const calon = await hashPin(pin, e.pinSalt, e.pinIterations || undefined);
+      if (calon === e.pinHash) return e;
+    }
   }
   return null;
 }

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import id.omi.absensicafe.data.PunchSide
 import id.omi.absensicafe.data.model.AttendanceRecord
 import id.omi.absensicafe.data.model.Employee
+import id.omi.absensicafe.data.model.PinBy
 import id.omi.absensicafe.data.openRecordFor
 import id.omi.absensicafe.domain.AttendanceRules
 import kotlinx.coroutines.delay
@@ -254,13 +255,14 @@ private fun GridScreen(
                     employee = karyawan,
                     openRecord = terbuka,
                     finishedRecord = selesaiHariIni,
+                    showNoPin = state.settings.pinRequired && !karyawan.hasPin,
                     zone = zone,
                     onClick = { onSelectEmployee(karyawan) }
                 )
             }
         }
 
-        ActivityList(state.records, zone)
+        ActivityList(state, zone)
     }
 }
 
@@ -269,6 +271,7 @@ private fun EmployeeCard(
     employee: Employee,
     openRecord: AttendanceRecord?,
     finishedRecord: AttendanceRecord?,
+    showNoPin: Boolean,
     zone: ZoneId,
     onClick: () -> Unit
 ) {
@@ -338,7 +341,7 @@ private fun EmployeeCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (!employee.hasPin) {
+            if (showNoPin) {
                 Text(
                     "tanpa PIN",
                     style = MaterialTheme.typography.labelSmall,
@@ -350,7 +353,8 @@ private fun EmployeeCard(
 }
 
 @Composable
-private fun ActivityList(records: List<AttendanceRecord>, zone: ZoneId) {
+private fun ActivityList(state: KioskUiState, zone: ZoneId) {
+    val records = state.records
     if (records.isEmpty()) return
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -374,8 +378,10 @@ private fun ActivityList(records: List<AttendanceRecord>, zone: ZoneId) {
                             add("telat ${AttendanceRules.formatDuration(r.lateMinutes)}")
                         }
                         if (r.offSchedule) add("di luar jadwal")
-                        if (r.checkIn?.noPin == true || r.checkOut?.noPin == true) add("tanpa PIN")
-                        if (r.checkIn?.adminOverride == true || r.checkOut?.adminOverride == true) {
+                        if (r.checkIn?.pinBy == PinBy.KOSONG || r.checkOut?.pinBy == PinBy.KOSONG) {
+                            add("tanpa PIN")
+                        }
+                        if (r.checkIn?.pinBy == PinBy.ADMIN || r.checkOut?.pinBy == PinBy.ADMIN) {
                             add("izin penyelia")
                         }
                         if (r.checkIn?.outsideGeofence == true ||
@@ -386,7 +392,7 @@ private fun ActivityList(records: List<AttendanceRecord>, zone: ZoneId) {
                     }
                     Row(Modifier.padding(vertical = 3.dp)) {
                         Text(
-                            r.employeeName,
+                            state.nameOf(r.employeeId),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,

@@ -68,7 +68,6 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
-    implementation(libs.firebase.storage)
 
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
@@ -78,7 +77,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.coroutines.play.services)
 
-    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.accompanist.permissions)
 

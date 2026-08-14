@@ -1,21 +1,10 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "records",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "ASCENDING" },
-        { "fieldPath": "employeeId", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "records",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "employeeId", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "ASCENDING" }
-      ]
-    }
+  "comment": [
+    "Tidak ada indeks gabungan yang perlu dibuat tangan.",
+    "Absen hanya disaring menurut satu field `date` — rentang tanggal di web",
+    "admin dan daftar tanggal di tablet — dan Firestore membuat indeks satu",
+    "field itu sendiri."
   ],
+  "indexes": [],
   "fieldOverrides": []
 }

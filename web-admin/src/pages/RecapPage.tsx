@@ -4,6 +4,7 @@ import {
   useRecords,
   useRosterRange,
   useSettings,
+  useShifts,
 } from "../hooks/useData";
 import { buildRecap, totalRow } from "../lib/recap";
 import { exportWorkbook } from "../lib/excel";
@@ -21,6 +22,7 @@ export default function RecapPage() {
 
   const settings = useSettings();
   const employees = useEmployees(true);
+  const shifts = useShifts();
   const records = useRecords(from, to);
   const roster = useRosterRange(from, to);
 
@@ -38,6 +40,7 @@ export default function RecapPage() {
         from,
         to,
         employees,
+        shifts,
         records,
         roster,
         settings,

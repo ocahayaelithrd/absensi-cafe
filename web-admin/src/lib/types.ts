@@ -1,7 +1,13 @@
-import type { Timestamp } from "firebase/firestore";
-
-/* Bentuk dokumen Firestore, sama persis dengan model di aplikasi Android.
-   Kalau salah satu berubah, keduanya harus ikut berubah. */
+/* Bentuk data yang dipakai di dalam aplikasi.
+ *
+ * Ini BUKAN bentuk dokumen Firestore. Firestore masih memakai struktur
+ * warisan aplikasi lama — semuanya di bawah `cafe/main`, dengan nama field
+ * seperti `empId`, `inAt`, `lateMin`, dan roster di field `hari`. Penerjemahan
+ * dua arah ada di `hooks/useData.ts` (baca) dan `lib/write.ts` (tulis), supaya
+ * halaman-halaman tidak perlu tahu nama lama sama sekali.
+ *
+ * Model yang sama ditulis ulang di sisi Android pada `data/model/Models.kt`.
+ */
 
 export type GeoMode = "off" | "warn" | "strict";
 
@@ -21,8 +27,10 @@ export interface Settings {
   geoLat: number | null;
   geoLon: number | null;
   geoRadiusMeters: number;
+  /** PIN penyelia di tablet; di Firestore bernama `pin`. */
   kioskAdminPin: string;
-  photoRequired: boolean;
+  /** Karyawan wajib memasukkan PIN pribadi; di Firestore `pinMode`. */
+  pinRequired: boolean;
 }
 
 export const defaultSettings: Settings = {
@@ -40,18 +48,30 @@ export const defaultSettings: Settings = {
   geoLon: null,
   geoRadiusMeters: 100,
   kioskAdminPin: "1234",
-  photoRequired: true,
+  pinRequired: true,
 };
 
 export interface Employee {
   id: string;
   name: string;
+  /** Jabatan bebas, ikut dari data lama. */
+  role: string;
+  /**
+   * PIN apa adanya dari data lama. Kosong berarti PIN belum diatur, atau
+   * sudah dipindahkan ke [pinHash].
+   */
+  plainPin: string;
+  /** PBKDF2; diisi begitu admin mengubah PIN lewat web ini. */
   pinHash: string;
   pinSalt: string;
   pinIterations: number;
   /** null berarti ikut toleransi umum. */
   toleranceMinutes: number | null;
   active: boolean;
+}
+
+export function hasPin(e: Employee): boolean {
+  return Boolean(e.pinHash) || Boolean(e.plainPin);
 }
 
 export interface Shift {
@@ -61,7 +81,6 @@ export interface Shift {
   /** "HH:mm". Bila end <= start, shift lewat tengah malam. */
   start: string;
   end: string;
-  order: number;
 }
 
 export const ROSTER_OFF = "off";
@@ -72,29 +91,30 @@ export interface RosterDay {
   assign: Record<string, string>;
 }
 
+/** Cara sebuah absen diloloskan; di Firestore disimpan sebagai `inPinBy`/`outPinBy`. */
+export type PinBy = "pin" | "kosong" | "admin" | "off";
+
 export interface Punch {
-  at: Timestamp;
+  at: Date;
   lat: number | null;
   lon: number | null;
   accuracyMeters: number | null;
   distanceMeters: number | null;
   outsideGeofence: boolean;
-  photoPath: string;
-  pinOk: boolean;
-  adminOverride: boolean;
-  noPin: boolean;
+  pinBy: PinBy;
+  /**
+   * Foto bukti sebagai data URL JPEG, tertanam di dokumen absen.
+   * Kosong berarti absen itu memang tidak berfoto.
+   */
+  photo: string;
 }
 
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
-  employeeName: string;
   /** "yyyy-MM-dd", tanggal shift dimulai. */
   date: string;
   shiftId: string;
-  shiftName: string;
-  shiftStart: string;
-  shiftEnd: string;
   offSchedule: boolean;
   checkIn: Punch | null;
   checkOut: Punch | null;
@@ -103,13 +123,6 @@ export interface AttendanceRecord {
   workMinutes: number;
   overtimeMinutes: number;
   note: string;
-  deviceId: string;
-  correctedBy: string;
-}
-
-export interface KioskDevice {
-  id: string;
-  label: string;
-  appVersion: string;
-  lastSeen: Timestamp | null;
+  /** Pernah dikoreksi admin; di Firestore bernama `edited`. */
+  edited: boolean;
 }

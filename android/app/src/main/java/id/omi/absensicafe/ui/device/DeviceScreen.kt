@@ -43,7 +43,6 @@ fun DeviceScreen(
     appVersion: String,
     cameraGranted: Boolean,
     locationGranted: Boolean,
-    pendingPhotos: Int,
     onLabelChange: (String) -> Unit,
     onRequestPermissions: () -> Unit,
     onLogout: () -> Unit,
@@ -94,11 +93,6 @@ fun DeviceScreen(
                 Baris("Pengenal perangkat", deviceId)
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 Baris("Versi aplikasi", appVersion)
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Baris(
-                    "Foto menunggu unggah",
-                    if (pendingPhotos == 0) "tidak ada" else "$pendingPhotos berkas"
-                )
             }
         }
 

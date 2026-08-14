@@ -11,11 +11,17 @@ import id.omi.absensicafe.domain.NameSort
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
 /**
  * Satu-satunya pintu ke Firestore untuk tablet kios.
+ *
+ * Seluruh data cafe bersarang di bawah satu dokumen `cafe/main`, warisan
+ * aplikasi versi lama. Jalurnya dikumpulkan di kelas ini supaya tidak ada
+ * string "cafe/main" yang berserakan di layar-layar.
  *
  * Semua bacaan lewat pendengar snapshot, bukan sekali ambil, karena Firestore
  * melayani pendengar dari simpanan lokal saat internet mati — begitu data
@@ -31,16 +37,16 @@ class AttendanceRepository(
     private val zone: ZoneId = ZoneId.systemDefault()
 ) {
 
-    private val settingsDoc get() = db.collection("config").document("settings")
-    private val employees get() = db.collection("employees")
-    private val shifts get() = db.collection("shifts")
-    private val roster get() = db.collection("roster")
-    private val records get() = db.collection("records")
+    private val cafe get() = db.collection("cafe").document("main")
+    private val employees get() = cafe.collection("employees")
+    private val shifts get() = cafe.collection("shifts")
+    private val roster get() = cafe.collection("roster")
+    private val records get() = cafe.collection("records")
+    private val devices get() = cafe.collection("devices")
 
     fun settingsFlow(): Flow<Settings> = callbackFlow {
-        val reg = settingsDoc.addSnapshotListener { snap, _ ->
-            if (snap != null && snap.exists()) trySend(snap.toSettings())
-            else trySend(Settings())
+        val reg = cafe.addSnapshotListener { snap, _ ->
+            trySend(if (snap != null && snap.exists()) snap.toSettings() else Settings())
         }
         awaitClose { reg.remove() }
     }
@@ -60,13 +66,13 @@ class AttendanceRepository(
         val reg = shifts.addSnapshotListener { snap, _ ->
             val list = snap?.documents.orEmpty()
                 .mapNotNull { it.toShift() }
-                .sortedWith(compareBy({ it.order }, { it.name }))
+                .sortedWith(compareBy({ it.start }, { it.name }))
             trySend(list)
         }
         awaitClose { reg.remove() }
     }
 
-    /** Roster dua hari: hari ini dan kemarin, untuk menampung shift malam. */
+    /** Roster beberapa hari sekaligus, untuk menampung shift yang lewat tengah malam. */
     fun rosterFlow(dates: List<String>): Flow<Map<String, RosterDay>> = callbackFlow {
         val hasil = mutableMapOf<String, RosterDay>()
         val regs = dates.map { tanggal ->
@@ -106,42 +112,34 @@ class AttendanceRepository(
     fun watchedDates(today: LocalDate = LocalDate.now(zone)): List<String> =
         (0L..2L).map { AttendanceRules.formatDate(today.minusDays(it)) }
 
-    fun newRecordId(): String = records.document().id
+    /**
+     * Pengenal bergaya aplikasi lama: waktu dalam basis 36 ditambah beberapa
+     * huruf acak, sehingga dokumen baru terurut menurut waktu pembuatan dan
+     * tidak terlihat asing di samping data lama.
+     */
+    fun newRecordId(): String =
+        System.currentTimeMillis().toString(36) +
+            (1..5).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
 
-    fun saveCheckIn(record: AttendanceRecord) {
-        records.document(record.id).set(record.toMap())
-    }
-
-    fun saveCheckOut(record: AttendanceRecord) {
+    fun saveRecord(record: AttendanceRecord) {
         records.document(record.id).set(record.toMap())
     }
 
     /** Menandai tablet ini masih hidup, supaya admin tahu kios mana yang mati. */
     fun touchDevice(deviceId: String, label: String, versionName: String) {
-        db.collection("devices").document(deviceId).set(
+        devices.document(deviceId).set(
             mapOf(
                 "label" to label,
                 "appVersion" to versionName,
-                "lastSeen" to com.google.firebase.Timestamp.now()
+                "lastSeen" to System.currentTimeMillis()
             )
         )
-    }
-
-}
-
-/** Sisi absen, dipakai untuk menyusun nama berkas dan nama field. */
-enum class PunchSide(val field: String, val fileName: String, val label: String) {
-    IN("checkIn", "masuk.jpg", "Masuk"),
-    OUT("checkOut", "pulang.jpg", "Pulang");
-
-    companion object {
-        fun from(name: String?): PunchSide = if (name == OUT.name) OUT else IN
     }
 }
 
 /** Absen yang sudah masuk tapi belum pulang, dan belum kedaluwarsa. */
-fun List<AttendanceRecord>.openRecordFor(employeeId: String, now: java.time.Instant):
+fun List<AttendanceRecord>.openRecordFor(employeeId: String, now: Instant):
     AttendanceRecord? =
     filter { it.employeeId == employeeId && it.checkIn != null && it.checkOut == null }
-        .filter { java.time.Duration.between(it.checkIn!!.at, now) < AttendanceRules.MAX_OPEN }
+        .filter { Duration.between(it.checkIn!!.at, now) < AttendanceRules.MAX_OPEN }
         .maxByOrNull { it.checkIn!!.at }

@@ -5,8 +5,10 @@ import { jamDesimal, tanggalPanjang } from "./format";
 import type {
   AttendanceRecord,
   Employee,
+  Punch,
   RosterDay,
   Settings,
+  Shift,
 } from "./types";
 
 /*
@@ -35,6 +37,7 @@ export interface ExportInput {
   from: string;
   to: string;
   employees: Employee[];
+  shifts: Shift[];
   records: AttendanceRecord[];
   roster: Record<string, RosterDay>;
   settings: Settings;
@@ -129,24 +132,32 @@ function tulisDetail(wb: ExcelJS.Workbook, input: ExportInput, denda: boolean) {
     { header: "Jarak pulang (m)", key: "distOut", width: 17, format: BULAT },
     { header: "Foto masuk", key: "photoIn", width: 12 },
     { header: "Foto pulang", key: "photoOut", width: 12 },
-    { header: "Perangkat", key: "device", width: 14 },
-    { header: "Dikoreksi oleh", key: "correctedBy", width: 22 },
+    { header: "Dikoreksi", key: "edited", width: 11 },
     { header: "Catatan", key: "note", width: 30 },
   ];
   siapkan(sheet, kolom);
 
+  /* Catatan absen hanya menyimpan pengenal karyawan dan shift, bukan namanya,
+     sehingga rekap lama ikut berubah kalau nama diperbaiki. Namanya dicari di
+     sini saat ekspor disusun. */
+  const namaKaryawan = new Map(input.employees.map((e) => [e.id, e.name]));
+  const shiftById = new Map(input.shifts.map((s) => [s.id, s]));
+  const nama = (id: string) => namaKaryawan.get(id) ?? "(karyawan dihapus)";
+
   const urut = [...input.records].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName),
+    (a, b) =>
+      a.date.localeCompare(b.date) || nama(a.employeeId).localeCompare(nama(b.employeeId)),
   );
 
   for (const r of urut) {
+    const shift = shiftById.get(r.shiftId);
     sheet.addRow({
       date: r.date,
-      name: r.employeeName,
-      shift: r.shiftName || "—",
-      jadwal: r.shiftStart ? `${r.shiftStart}–${r.shiftEnd}` : "—",
-      masuk: r.checkIn ? r.checkIn.at.toDate() : null,
-      pulang: r.checkOut ? r.checkOut.at.toDate() : null,
+      name: nama(r.employeeId),
+      shift: shift?.name ?? "—",
+      jadwal: shift ? `${shift.start}–${shift.end}` : "—",
+      masuk: r.checkIn ? r.checkIn.at : null,
+      pulang: r.checkOut ? r.checkOut.at : null,
       late: r.lateMinutes,
       fine: fineFor(r.lateMinutes, input.settings),
       early: r.earlyLeaveMinutes,
@@ -163,20 +174,26 @@ function tulisDetail(wb: ExcelJS.Workbook, input: ExportInput, denda: boolean) {
       lonOut: r.checkOut?.lon ?? null,
       accOut: r.checkOut?.accuracyMeters ?? null,
       distOut: r.checkOut?.distanceMeters ?? null,
-      photoIn: r.checkIn?.photoPath ? "ada" : "",
-      photoOut: r.checkOut?.photoPath ? "ada" : "",
-      device: r.deviceId,
-      correctedBy: r.correctedBy,
+      photoIn: r.checkIn?.photo ? "ada" : "",
+      photoOut: r.checkOut?.photo ? "ada" : "",
+      edited: r.edited ? "ya" : "",
       note: r.note,
     });
   }
 }
 
-function statusPin(punch: AttendanceRecord["checkIn"]): string {
+function statusPin(punch: Punch | null): string {
   if (!punch) return "";
-  if (punch.noPin) return "tanpa PIN";
-  if (punch.adminOverride) return "izin penyelia";
-  return punch.pinOk ? "ok" : "tidak cocok";
+  switch (punch.pinBy) {
+    case "kosong":
+      return "tanpa PIN";
+    case "admin":
+      return "izin penyelia";
+    case "pin":
+      return "ok";
+    default:
+      return "PIN dimatikan";
+  }
 }
 
 function tulisInfo(wb: ExcelJS.Workbook, input: ExportInput) {
@@ -213,7 +230,7 @@ function tulisInfo(wb: ExcelJS.Workbook, input: ExportInput) {
     ["Mode lokasi", modeLokasi(s.geoMode)],
     ["Titik cafe", s.geoLat !== null && s.geoLon !== null ? `${s.geoLat}, ${s.geoLon}` : "belum diatur"],
     ["Radius (meter)", s.geoRadiusMeters],
-    ["Foto selfie", s.photoRequired ? "wajib" : "tidak wajib"],
+    ["PIN pribadi karyawan", s.pinRequired ? "wajib" : "dimatikan"],
   ];
 
   for (const [k, v] of isi) sheet.addRow({ k, v });

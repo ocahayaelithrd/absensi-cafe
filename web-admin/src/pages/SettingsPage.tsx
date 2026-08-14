@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { useDevices, useSettings } from "../hooks/useData";
+import { saveSettings } from "../lib/write";
 import { sortTiers } from "../lib/rules";
 import { rupiah } from "../lib/format";
 import type { FineTier, GeoMode, Settings } from "../lib/types";
@@ -27,11 +26,7 @@ export default function SettingsPage() {
 
   async function simpan() {
     if (!draft) return;
-    await setDoc(
-      doc(db, "config", "settings"),
-      { ...draft, fineTiers: sortTiers(draft.fineTiers) },
-      { merge: true },
-    );
+    await saveSettings({ ...draft, fineTiers: sortTiers(draft.fineTiers) });
     setStatus("Pengaturan tersimpan. Tablet menerapkannya dalam beberapa detik.");
   }
 
@@ -119,10 +114,13 @@ export default function SettingsPage() {
         <label className="check">
           <input
             type="checkbox"
-            checked={draft.photoRequired}
-            onChange={(e) => ubah({ photoRequired: e.target.checked })}
+            checked={draft.pinRequired}
+            onChange={(e) => ubah({ pinRequired: e.target.checked })}
           />
-          <span>Ambil foto selfie setiap absen</span>
+          <span>
+            Karyawan wajib memasukkan PIN pribadi sebelum berfoto — pengaman utama
+            terhadap titip absen
+          </span>
         </label>
       </div>
 
@@ -296,11 +294,7 @@ export default function SettingsPage() {
                   <tr key={d.id}>
                     <td>{d.label}</td>
                     <td>{d.appVersion}</td>
-                    <td>
-                      {d.lastSeen
-                        ? d.lastSeen.toDate().toLocaleString("id-ID")
-                        : "—"}
-                    </td>
+                    <td>{d.lastSeen ? d.lastSeen.toLocaleString("id-ID") : "—"}</td>
                   </tr>
                 ))}
               </tbody>

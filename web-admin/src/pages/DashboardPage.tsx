@@ -2,12 +2,14 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   useDevices,
+  useEmployeeNames,
   useEmployees,
   useRecords,
   useRoster,
   useSettings,
   useShifts,
 } from "../hooks/useData";
+import { hasPin } from "../lib/types";
 import { addDays, formatDate } from "../lib/rules";
 import { durasi, jam, tanggalPanjang } from "../lib/format";
 import { ROSTER_OFF } from "../lib/types";
@@ -18,6 +20,7 @@ export default function DashboardPage() {
 
   const settings = useSettings();
   const employees = useEmployees();
+  const names = useEmployeeNames(employees);
   const shifts = useShifts();
   const devices = useDevices();
   const roster = useRoster(useMemo(() => [hariIni, kemarin], [hariIni, kemarin]));
@@ -36,10 +39,10 @@ export default function DashboardPage() {
   const perluPerhatian: string[] = [];
   if (shifts.length === 0) perluPerhatian.push("Belum ada pola shift.");
   if (employees.length === 0) perluPerhatian.push("Belum ada karyawan aktif.");
-  if (employees.some((e) => !e.pinHash)) {
+  if (settings.pinRequired && employees.some((e) => !hasPin(e))) {
     perluPerhatian.push(
       `PIN belum diatur untuk ${employees
-        .filter((e) => !e.pinHash)
+        .filter((e) => !hasPin(e))
         .map((e) => e.name)
         .join(", ")}.`,
     );
@@ -90,9 +93,11 @@ export default function DashboardPage() {
               <tbody>
                 {masihBekerja.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.employeeName}</td>
-                    <td className="muted">{r.shiftName || "di luar jadwal"}</td>
-                    <td className="num">masuk {jam(r.checkIn?.at.toDate())}</td>
+                    <td>{names.get(r.employeeId) ?? "(karyawan dihapus)"}</td>
+                    <td className="muted">
+                      {shifts.find((s) => s.id === r.shiftId)?.name ?? "di luar jadwal"}
+                    </td>
+                    <td className="num">masuk {jam(r.checkIn?.at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -146,10 +151,14 @@ export default function DashboardPage() {
               <tbody>
                 {hariIniRecords.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.employeeName}</td>
-                    <td>{r.shiftName || <span className="muted">di luar jadwal</span>}</td>
-                    <td>{jam(r.checkIn?.at.toDate())}</td>
-                    <td>{r.checkOut ? jam(r.checkOut.at.toDate()) : "—"}</td>
+                    <td>{names.get(r.employeeId) ?? "(karyawan dihapus)"}</td>
+                    <td>
+                      {shifts.find((s) => s.id === r.shiftId)?.name ?? (
+                        <span className="muted">di luar jadwal</span>
+                      )}
+                    </td>
+                    <td>{jam(r.checkIn?.at)}</td>
+                    <td>{r.checkOut ? jam(r.checkOut.at) : "—"}</td>
                     <td className="num">
                       {r.lateMinutes > 0 ? (
                         <span className="tag bad">{durasi(r.lateMinutes)}</span>

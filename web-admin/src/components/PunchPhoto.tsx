@@ -1,40 +1,17 @@
-import { useEffect, useState } from "react";
-import { getDownloadURL, ref } from "firebase/storage";
-import { storage } from "../firebase";
-
 /**
  * Foto bukti absen.
  *
- * Jalur foto baru terisi setelah tablet berhasil mengunggahnya, jadi catatan
- * yang dibuat saat internet cafe mati akan tampil "menunggu unggah" sampai
- * jaringan hidup lagi — itu keadaan normal, bukan kesalahan.
+ * Fotonya tertanam langsung di dokumen absen sebagai data URL JPEG kecil
+ * (360×360, sekitar 5 KB), bukan berkas terpisah di Cloud Storage. Dengan
+ * begitu tablet bisa menyimpan absen berikut buktinya dalam satu penulisan
+ * yang tetap mengantre saat internet cafe mati.
  */
-export default function PunchPhoto({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [gagal, setGagal] = useState(false);
-
-  useEffect(() => {
-    let batal = false;
-    if (!path) return;
-    getDownloadURL(ref(storage, path))
-      .then((u) => {
-        if (!batal) setUrl(u);
-      })
-      .catch(() => {
-        if (!batal) setGagal(true);
-      });
-    return () => {
-      batal = true;
-    };
-  }, [path]);
-
-  if (!path) return <span className="muted small">menunggu unggah</span>;
-  if (gagal) return <span className="muted small">foto tidak ditemukan</span>;
-  if (!url) return <span className="muted small">memuat…</span>;
+export default function PunchPhoto({ photo }: { photo: string }) {
+  if (!photo) return <span className="muted small">tidak ada foto</span>;
 
   return (
-    <a href={url} target="_blank" rel="noreferrer">
-      <img className="photo" src={url} alt="Foto absen" />
+    <a href={photo} target="_blank" rel="noreferrer">
+      <img className="photo" src={photo} alt="Foto absen" />
     </a>
   );
 }

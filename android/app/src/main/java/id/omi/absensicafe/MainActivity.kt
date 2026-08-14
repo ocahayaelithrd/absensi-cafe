@@ -22,11 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.work.WorkManager
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
-import id.omi.absensicafe.data.PhotoUploadWorker
 import id.omi.absensicafe.ui.auth.AuthViewModel
 import id.omi.absensicafe.ui.auth.LoginScreen
 import id.omi.absensicafe.ui.device.DeviceScreen
@@ -34,9 +32,7 @@ import id.omi.absensicafe.ui.kiosk.KioskScreen
 import id.omi.absensicafe.ui.kiosk.KioskViewModel
 import id.omi.absensicafe.ui.kiosk.PinPad
 import id.omi.absensicafe.ui.theme.AbsensiTheme
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -161,18 +157,10 @@ private fun Root(auth: AuthViewModel, kiosk: KioskViewModel, versionName: String
             val app = context.applicationContext as AbsensiApp
             var deviceId by remember { mutableStateOf("") }
             var label by remember { mutableStateOf("Kios Kasir") }
-            var pending by remember { mutableStateOf(0) }
 
             LaunchedEffect(Unit) {
                 deviceId = app.deviceStore.deviceId()
                 label = app.deviceStore.label.first()
-                pending = withContext(Dispatchers.IO) {
-                    // Kueri WorkManager ini memblokir, jadi jangan di utas utama.
-                    WorkManager.getInstance(context)
-                        .getWorkInfosByTag(PhotoUploadWorker.TAG)
-                        .get()
-                        .count { !it.state.isFinished }
-                }
             }
 
             DeviceScreen(
@@ -186,7 +174,6 @@ private fun Root(auth: AuthViewModel, kiosk: KioskViewModel, versionName: String
                 locationGranted = permissions.permissions
                     .first { it.permission == Manifest.permission.ACCESS_FINE_LOCATION }
                     .status.isGranted,
-                pendingPhotos = pending,
                 onLabelChange = { baru ->
                     label = baru
                     kiosk.setDeviceLabel(baru, versionName)

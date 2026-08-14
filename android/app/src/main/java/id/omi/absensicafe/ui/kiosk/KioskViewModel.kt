@@ -4,11 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import id.omi.absensicafe.AbsensiApp
-import id.omi.absensicafe.data.PhotoUploadWorker
+import id.omi.absensicafe.data.PhotoEncoder
 import id.omi.absensicafe.data.PunchSide
 import id.omi.absensicafe.data.model.AttendanceRecord
 import id.omi.absensicafe.data.model.Employee
 import id.omi.absensicafe.data.model.GeoMode
+import id.omi.absensicafe.data.model.PinBy
 import id.omi.absensicafe.data.model.Punch
 import id.omi.absensicafe.data.model.ROSTER_OFF
 import id.omi.absensicafe.data.model.RosterDay
@@ -18,6 +19,7 @@ import id.omi.absensicafe.data.openRecordFor
 import id.omi.absensicafe.domain.AttendanceRules
 import id.omi.absensicafe.domain.Pin
 import id.omi.absensicafe.location.LocationFix
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -49,9 +52,7 @@ sealed interface KioskStep {
     data class Capture(
         val employee: Employee,
         val side: PunchSide,
-        val pinOk: Boolean,
-        val adminOverride: Boolean,
-        val noPin: Boolean
+        val pinBy: PinBy
     ) : KioskStep
 
     /** Absen ditahan karena di luar area; menunggu izin penyelia. */
@@ -76,9 +77,7 @@ sealed interface KioskStep {
 data class PendingPunch(
     val employee: Employee,
     val side: PunchSide,
-    val pinOk: Boolean,
-    val adminOverride: Boolean,
-    val noPin: Boolean,
+    val pinBy: PinBy,
     val photo: File?,
     val fix: LocationFix?,
     val distanceMeters: Double?,
@@ -95,9 +94,14 @@ data class KioskUiState(
     val sortAscending: Boolean = true
 ) {
     /** Karyawan yang PIN-nya belum diatur admin, untuk peringatan di layar. */
-    val withoutPin: List<String> get() = employees.filter { !it.hasPin }.map { it.name }
+    val withoutPin: List<String>
+        get() = if (!settings.pinRequired) emptyList()
+        else employees.filter { !it.hasPin }.map { it.name }
 
     fun shiftById(id: String?): Shift? = shifts.firstOrNull { it.id == id }
+
+    fun nameOf(employeeId: String): String =
+        employees.firstOrNull { it.id == employeeId }?.name ?: "(karyawan dihapus)"
 }
 
 class KioskViewModel(app: Application) : AndroidViewModel(app) {
@@ -108,8 +112,6 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _step = MutableStateFlow<KioskStep>(KioskStep.Grid)
     val step: StateFlow<KioskStep> = _step.asStateFlow()
-
-    private var deviceId: String = ""
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val state: StateFlow<KioskUiState> =
@@ -138,12 +140,6 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), KioskUiState())
 
-    init {
-        viewModelScope.launch {
-            deviceId = deviceStore.deviceId()
-        }
-    }
-
     fun toggleSort() {
         viewModelScope.launch {
             deviceStore.setSortAscending(!state.value.sortAscending)
@@ -157,12 +153,19 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectEmployee(employee: Employee) {
         val side = sideFor(employee.id)
-        _step.value = if (employee.hasPin) {
-            KioskStep.AskPin(employee, side)
-        } else {
+        val settings = state.value.settings
+
+        _step.value = when {
+            !settings.pinRequired ->
+                KioskStep.Capture(employee, side, PinBy.OFF)
+
+            employee.hasPin ->
+                KioskStep.AskPin(employee, side)
+
             // PIN belum diatur admin. Karyawan tetap dibiarkan absen supaya
             // shift pagi tidak macet, tapi catatannya ditandai "tanpa PIN".
-            KioskStep.Capture(employee, side, pinOk = false, adminOverride = false, noPin = true)
+            else ->
+                KioskStep.Capture(employee, side, PinBy.KOSONG)
         }
     }
 
@@ -170,10 +173,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         val s = _step.value as? KioskStep.AskPin ?: return
         if (s.adminMode) {
             if (pin == state.value.settings.kioskAdminPin) {
-                _step.value = KioskStep.Capture(
-                    s.employee, s.side,
-                    pinOk = false, adminOverride = true, noPin = false
-                )
+                _step.value = KioskStep.Capture(s.employee, s.side, PinBy.ADMIN)
             } else {
                 _step.value = s.copy(error = "PIN penyelia salah")
             }
@@ -181,10 +181,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         if (Pin.verify(pin, s.employee)) {
-            _step.value = KioskStep.Capture(
-                s.employee, s.side,
-                pinOk = true, adminOverride = false, noPin = false
-            )
+            _step.value = KioskStep.Capture(s.employee, s.side, PinBy.PIN)
             return
         }
 
@@ -207,7 +204,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             _step.value = s.copy(error = "PIN penyelia salah")
             return
         }
-        commit(s.pending.copy(adminOverride = true))
+        commit(s.pending.copy(pinBy = PinBy.ADMIN))
     }
 
     fun cancel() {
@@ -237,16 +234,14 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         val pending = PendingPunch(
             employee = s.employee,
             side = s.side,
-            pinOk = s.pinOk,
-            adminOverride = s.adminOverride,
-            noPin = s.noPin,
+            pinBy = s.pinBy,
             photo = photo,
             fix = fix,
             distanceMeters = jarak,
             outside = diLuar
         )
 
-        if (settings.geoMode == GeoMode.STRICT && diLuar && !s.adminOverride) {
+        if (settings.geoMode == GeoMode.STRICT && diLuar && s.pinBy != PinBy.ADMIN) {
             val alasan = when {
                 fix == null -> "Lokasi belum didapat. Nyalakan GPS dan tunggu sinyal."
                 fix.mocked -> "Lokasi terdeteksi palsu."
@@ -261,41 +256,32 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         commit(pending)
     }
 
+    /**
+     * Mencatat absen.
+     *
+     * Layar hasil ditampilkan lebih dulu, lalu foto dikecilkan dan dokumennya
+     * ditulis di latar. Pengecilan foto memakan ratusan milidetik di tablet
+     * murah, dan menahan layar selama itu membuat karyawan mengira absennya
+     * gagal lalu menekan ulang.
+     */
     private fun commit(p: PendingPunch) {
         val st = state.value
         val settings = st.settings
         val now = Instant.now()
 
-        val punch = Punch(
-            at = now,
-            lat = p.fix?.lat,
-            lon = p.fix?.lon,
-            accuracyMeters = p.fix?.accuracyMeters,
-            distanceMeters = p.distanceMeters,
-            outsideGeofence = p.outside,
-            photoPath = "",
-            pinOk = p.pinOk,
-            adminOverride = p.adminOverride,
-            noPin = p.noPin
-        )
-
         val peringatan = buildList {
-            if (p.noPin) add("Tanpa PIN")
-            if (p.adminOverride) add("Izin penyelia")
+            if (p.pinBy == PinBy.KOSONG) add("Tanpa PIN")
+            if (p.pinBy == PinBy.ADMIN) add("Izin penyelia")
             if (p.outside) add("Di luar area")
             if (p.fix?.mocked == true) add("Lokasi palsu")
         }
 
         val terbuka = st.records.openRecordFor(p.employee.id, now)
+
         if (p.side == PunchSide.OUT && terbuka != null) {
             val shift = st.shiftById(terbuka.shiftId)
-            val lengkap = AttendanceRules.withComputedTotals(
-                terbuka.copy(checkOut = punch), shift, settings, zone
-            )
-            repo.saveCheckOut(lengkap)
-            p.photo?.let {
-                PhotoUploadWorker.enqueue(getApplication<Application>(), lengkap.id, PunchSide.OUT, it)
-            }
+            val dasar = terbuka.copy(checkOut = punchOf(p, now, ""))
+            val lengkap = AttendanceRules.withComputedTotals(dasar, shift, settings, zone)
 
             _step.value = KioskStep.Done(
                 employeeName = p.employee.name,
@@ -310,6 +296,10 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             )
+
+            simpanDenganFoto(p) { foto ->
+                lengkap.copy(checkOut = lengkap.checkOut?.copy(photo = foto))
+            }
             return
         }
 
@@ -335,21 +325,12 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         val record = AttendanceRecord(
             id = repo.newRecordId(),
             employeeId = p.employee.id,
-            employeeName = p.employee.name,
             date = kunciTanggal,
             shiftId = shift?.id.orEmpty(),
-            shiftName = shift?.name.orEmpty(),
-            shiftStart = shift?.start.orEmpty(),
-            shiftEnd = shift?.end.orEmpty(),
             offSchedule = diLuarJadwal,
-            checkIn = punch,
-            lateMinutes = telat,
-            deviceId = deviceId
+            checkIn = punchOf(p, now, ""),
+            lateMinutes = telat
         )
-        repo.saveCheckIn(record)
-        p.photo?.let {
-            PhotoUploadWorker.enqueue(getApplication<Application>(), record.id, PunchSide.IN, it)
-        }
 
         _step.value = KioskStep.Done(
             employeeName = p.employee.name,
@@ -362,6 +343,35 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                 if (diLuarJadwal) add("Di luar jadwal")
             }
         )
+
+        simpanDenganFoto(p) { foto ->
+            record.copy(checkIn = record.checkIn?.copy(photo = foto))
+        }
+    }
+
+    private fun punchOf(p: PendingPunch, now: Instant, photo: String) = Punch(
+        at = now,
+        lat = p.fix?.lat,
+        lon = p.fix?.lon,
+        accuracyMeters = p.fix?.accuracyMeters,
+        distanceMeters = p.distanceMeters,
+        outsideGeofence = p.outside,
+        pinBy = p.pinBy,
+        photo = photo
+    )
+
+    private fun simpanDenganFoto(
+        p: PendingPunch,
+        build: (foto: String) -> AttendanceRecord
+    ) {
+        viewModelScope.launch {
+            val foto = p.photo?.let { berkas ->
+                withContext(Dispatchers.Default) {
+                    PhotoEncoder.encode(berkas).also { berkas.delete() }
+                }
+            }.orEmpty()
+            repo.saveRecord(build(foto))
+        }
     }
 
     fun setDeviceLabel(label: String, versionName: String) {

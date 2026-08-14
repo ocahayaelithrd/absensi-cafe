@@ -71,25 +71,40 @@ sebelumnya.
 
    Peran inilah yang dibaca aturan Firestore. Akun tanpa dokumen ini tidak bisa
    membaca apa pun.
-4. **Pasang aturan dan indeks:**
+4. **Pasang aturan dan indeks** — kerjakan setelah langkah 3, karena aturan baru
+   mengunci akses ke akun yang punya dokumen `users/{uid}`:
 
    ```bash
    npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage
    ```
 
-Struktur datanya:
+## Struktur data
+
+Seluruh data cafe bersarang di bawah satu dokumen **`cafe/main`** — bentuk
+warisan aplikasi versi lama, dipertahukan supaya karyawan, absen, dan
+pengaturan yang sudah ada langsung terbaca tanpa migrasi apa pun.
 
 ```
-config/settings         pengaturan umum, denda, geofence
-employees/{id}          karyawan; PIN disimpan sebagai hash bergaram
-shifts/{id}             pola shift
-roster/{yyyy-MM-dd}     peta id karyawan → id shift atau "off"
-records/{id}            absen, dengan jalur foto ke Cloud Storage
-devices/{id}            catatan tablet yang pernah tersambung
-users/{uid}             peran akun
+cafe/main                    field `settings`: nama cafe, denda, geofence, toleransi
+cafe/main/employees/{id}     karyawan; PIN lama apa adanya, PIN baru sebagai hash
+cafe/main/shifts/{id}        pola shift
+cafe/main/roster/{yyyy-MM-dd} field `hari`: id karyawan → id shift atau "off"
+cafe/main/records/{id}       absen, kedua sisi mendatar dalam satu dokumen
+cafe/main/devices/{id}       catatan tablet yang pernah tersambung
+users/{uid}                  peran akun: "admin" atau "kiosk"
 ```
 
-Foto disimpan di Storage pada `records/{idAbsen}/masuk.jpg` dan `pulang.jpg`.
+Nama field di dalamnya juga warisan: `empId`, `inAt`/`outAt` sebagai milidetik
+epoch, `lateMin`, `otMin`, `inLat`, `inPinBy`, dan seterusnya. Nama-nama itu
+sengaja **tidak menyebar** ke seluruh kode — penerjemahannya terkumpul di dua
+tempat saja, [`Mappers.kt`](android/app/src/main/java/id/omi/absensicafe/data/Mappers.kt)
+untuk tablet, serta [`useData.ts`](web-admin/src/hooks/useData.ts) dan
+[`write.ts`](web-admin/src/lib/write.ts) untuk web. Sisanya bekerja dengan model
+yang bernama wajar.
+
+Cloud Storage tidak dipakai: foto bukti tertanam di dokumen absennya sendiri
+sebagai data URL JPEG 360×360 (sekitar 20–30 KB per lembar), jauh di bawah batas
+1 MB per dokumen.
 
 ## Menjalankan web admin
 
@@ -209,18 +224,28 @@ langsung ditolak kalau bentrok.
   macet, tapi catatannya ditandai *tanpa PIN* dan admin diberi peringatan
   berisi nama-namanya.
 
-PIN tidak pernah disimpan apa adanya. Yang tersimpan adalah hasil
-**PBKDF2-HMAC-SHA256 120.000 putaran** dengan garam acak per karyawan — empat
-angka saja terlalu sedikit untuk hash cepat, yang bisa ditebak habis dalam
-hitungan detik kalau isinya bocor. Web membuat hash lewat WebCrypto
+### Dua bentuk penyimpanan PIN
+
+Data lama menyimpan PIN **apa adanya** di field `pin`. Empat angka terlalu
+sedikit untuk itu: siapa pun yang bisa membaca satu dokumen karyawan langsung
+tahu PIN-nya.
+
+PIN yang diubah lewat web admin karena itu disimpan sebagai
+**PBKDF2-HMAC-SHA256 120.000 putaran** dengan garam acak per karyawan, dan field
+lamanya dikosongkan. Web membuat hash lewat WebCrypto
 ([`pin.ts`](web-admin/src/lib/pin.ts)), tablet memeriksanya lewat
 `SecretKeyFactory` ([`Pin.kt`](android/app/src/main/java/id/omi/absensicafe/domain/Pin.kt));
 karena parameternya sama persis, PIN yang dibuat di PC bisa diperiksa di tablet
 tanpa jaringan.
 
-Karena hash-nya bergaram, PIN bentrok tidak bisa dicari dengan membandingkan
-nilai — web menghitung ulang PIN calon dengan garam tiap karyawan saat admin
-menyimpan.
+Kedua bentuk tetap diterima saat absen, supaya karyawan tidak perlu berganti PIN
+serentak. Halaman **Karyawan** menandai siapa yang PIN-nya masih tersimpan polos;
+mengubah PIN orang itu sekali saja sudah memindahkannya ke bentuk aman. **Selama
+masih ada yang bertanda itu, PIN mereka bisa dibaca siapa pun yang punya akses
+Firestore** — termasuk akun kios di tablet.
+
+Karena hash bergaram tidak bisa dibandingkan langsung, pemeriksaan PIN bentrok
+menghitung ulang PIN calon dengan garam tiap karyawan saat admin menyimpan.
 
 ## Lokasi absen
 
@@ -272,12 +297,18 @@ Penulisan ke Firestore sengaja tidak ditunggu selesai. Saat luring, penulisan
 baru rampung setelah tersambung lagi — menunggunya akan menggantung layar
 karyawan tanpa alasan, padahal catatannya sudah aman tersimpan di tablet.
 
-Foto adalah satu-satunya bagian yang butuh jaringan sungguhan, karena Cloud
-Storage tidak punya antrean luring. Karena itu foto disimpan ke berkas lokal
-dulu, dan `PhotoUploadWorker` yang mengantarkannya kapan pun ada internet —
-dengan pengulangan bertahap yang bertahan melewati tablet dinyalakan ulang. Di
-web admin, foto yang belum sampai tampil sebagai *menunggu unggah*; itu keadaan
-normal, bukan kesalahan.
+Foto ikut aman karena tertanam di dokumen absennya sendiri, bukan diunggah
+terpisah ke Cloud Storage. Firestore mengantre penulisan saat internet mati;
+Storage tidak punya antrean seperti itu. Dengan menanam fotonya, absen berikut
+buktinya tersimpan dalam satu penulisan yang pasti terkirim begitu jaringan
+hidup — tanpa pekerjaan latar yang harus dijaga, dan tanpa keadaan setengah
+jadi berupa catatan tanpa foto.
+
+Harganya adalah ukuran: dokumen Firestore dibatasi 1 MB dan satu catatan memuat
+dua foto, jadi foto dipotong menjadi bujur sangkar 360 piksel dengan mutu 72
+sebelum disimpan. Pengecilan itu berjalan setelah layar hasil tampil, bukan
+sebelumnya — di tablet murah prosesnya makan ratusan milidetik, dan menahan
+layar selama itu membuat karyawan mengira absennya gagal lalu menekan ulang.
 
 ## Keamanan data
 
@@ -287,6 +318,11 @@ datanya tiga: pendaftaran mandiri dimatikan di console, akses dikunci ke akun
 yang punya dokumen `users/{uid}`, dan peran kios dibatasi hanya boleh menulis
 absen.
 
-Setelah absen pulang tercatat, kios tidak boleh lagi mengubah jam masuk maupun
-jam pulangnya — satu-satunya alasan tablet menyentuh catatan yang sudah lengkap
-adalah menambahkan jalur foto yang baru selesai diunggah.
+Sekali absen pulang tercatat, kios tidak boleh lagi menyentuh catatan itu sama
+sekali; hanya admin yang bisa mengoreksinya. Tablet memang tidak pernah perlu —
+foto ikut dalam penulisan yang sama, jadi tidak ada susulan apa pun setelah satu
+hari selesai.
+
+Cloud Storage tidak dipakai, dan aturannya di
+[`firebase/storage.rules`](firebase/storage.rules) menutup seluruh bucket supaya
+tidak menganga dengan aturan bawaan.

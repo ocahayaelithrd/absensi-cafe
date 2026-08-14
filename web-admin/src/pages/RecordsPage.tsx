@@ -1,19 +1,22 @@
 import { useMemo, useState } from "react";
-import { Timestamp, deleteDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
-import { useAuth } from "../hooks/useAuth";
-import { useEmployees, useRecords, useSettings, useShifts } from "../hooks/useData";
-import { formatDate, recompute } from "../lib/rules";
+import {
+  useEmployeeNames,
+  useEmployees,
+  useRecords,
+  useSettings,
+  useShifts,
+} from "../hooks/useData";
+import { deleteRecord, saveRecordCorrection } from "../lib/write";
+import { fineFor, formatDate, recompute } from "../lib/rules";
 import { durasi, jam, meter, rupiah, tanggalPendek } from "../lib/format";
-import { fineFor } from "../lib/rules";
 import Dialog from "../components/Dialog";
 import PunchPhoto from "../components/PunchPhoto";
-import type { AttendanceRecord } from "../lib/types";
+import type { AttendanceRecord, Employee, Punch, Settings, Shift } from "../lib/types";
 
 export default function RecordsPage() {
-  const { user } = useAuth();
   const settings = useSettings();
   const employees = useEmployees(true);
+  const names = useEmployeeNames(employees);
   const shifts = useShifts();
 
   const hariIni = formatDate(new Date());
@@ -31,18 +34,18 @@ export default function RecordsPage() {
     return [...list].sort(
       (a, b) =>
         b.date.localeCompare(a.date) ||
-        (b.checkIn?.at.toMillis() ?? 0) - (a.checkIn?.at.toMillis() ?? 0),
+        (b.checkIn?.at.getTime() ?? 0) - (a.checkIn?.at.getTime() ?? 0),
     );
   }, [records, filterKaryawan]);
+
+  const nama = (id: string) => names.get(id) ?? "(karyawan dihapus)";
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Absensi</h1>
-          <p>
-            Ketuk satu baris untuk melihat foto, lokasi, dan mengoreksi jamnya.
-          </p>
+          <p>Ketuk satu baris untuk melihat foto, lokasi, dan mengoreksi jamnya.</p>
         </div>
       </div>
 
@@ -97,40 +100,43 @@ export default function RecordsPage() {
                 </td>
               </tr>
             )}
-            {tampil.map((r) => (
-              <tr key={r.id} onClick={() => setDibuka(r)} style={{ cursor: "pointer" }}>
-                <td>{tanggalPendek(r.date)}</td>
-                <td>{r.employeeName}</td>
-                <td>{r.shiftName || <span className="muted">—</span>}</td>
-                <td>{jam(r.checkIn?.at.toDate())}</td>
-                <td>
-                  {r.checkOut ? (
-                    jam(r.checkOut.at.toDate())
-                  ) : (
-                    <span className="tag warn">belum pulang</span>
-                  )}
-                </td>
-                <td className="num">
-                  {r.lateMinutes > 0 ? (
-                    <span className="tag bad">{durasi(r.lateMinutes)}</span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                {settings.fineEnabled && (
-                  <td className="num">
-                    {r.lateMinutes > 0 ? rupiah(fineFor(r.lateMinutes, settings)) : "—"}
+            {tampil.map((r) => {
+              const shift = shifts.find((s) => s.id === r.shiftId);
+              return (
+                <tr key={r.id} onClick={() => setDibuka(r)} style={{ cursor: "pointer" }}>
+                  <td>{tanggalPendek(r.date)}</td>
+                  <td>{nama(r.employeeId)}</td>
+                  <td>{shift ? shift.name : <span className="muted">—</span>}</td>
+                  <td>{jam(r.checkIn?.at)}</td>
+                  <td>
+                    {r.checkOut ? (
+                      jam(r.checkOut.at)
+                    ) : (
+                      <span className="tag warn">belum pulang</span>
+                    )}
                   </td>
-                )}
-                <td className="num">{r.workMinutes > 0 ? durasi(r.workMinutes) : "—"}</td>
-                <td className="num">
-                  {r.overtimeMinutes > 0 ? durasi(r.overtimeMinutes) : "—"}
-                </td>
-                <td>
-                  <Tanda record={r} />
-                </td>
-              </tr>
-            ))}
+                  <td className="num">
+                    {r.lateMinutes > 0 ? (
+                      <span className="tag bad">{durasi(r.lateMinutes)}</span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  {settings.fineEnabled && (
+                    <td className="num">
+                      {r.lateMinutes > 0 ? rupiah(fineFor(r.lateMinutes, settings)) : "—"}
+                    </td>
+                  )}
+                  <td className="num">{r.workMinutes > 0 ? durasi(r.workMinutes) : "—"}</td>
+                  <td className="num">
+                    {r.overtimeMinutes > 0 ? durasi(r.overtimeMinutes) : "—"}
+                  </td>
+                  <td>
+                    <Tanda record={r} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -138,10 +144,10 @@ export default function RecordsPage() {
       {dibuka && (
         <DetailDialog
           record={dibuka}
-          adminEmail={user?.email ?? ""}
+          employeeName={nama(dibuka.employeeId)}
+          employee={employees.find((e) => e.id === dibuka.employeeId)}
           onClose={() => setDibuka(null)}
           shifts={shifts}
-          employees={employees}
           settings={settings}
         />
       )}
@@ -149,13 +155,13 @@ export default function RecordsPage() {
   );
 }
 
-function Tanda({ record }: { record: AttendanceRecord }) {
+export function Tanda({ record }: { record: AttendanceRecord }) {
   const tanda: { teks: string; kelas: string }[] = [];
   if (record.offSchedule) tanda.push({ teks: "di luar jadwal", kelas: "warn" });
-  if (record.checkIn?.noPin || record.checkOut?.noPin) {
+  if (record.checkIn?.pinBy === "kosong" || record.checkOut?.pinBy === "kosong") {
     tanda.push({ teks: "tanpa PIN", kelas: "bad" });
   }
-  if (record.checkIn?.adminOverride || record.checkOut?.adminOverride) {
+  if (record.checkIn?.pinBy === "admin" || record.checkOut?.pinBy === "admin") {
     tanda.push({ teks: "izin penyelia", kelas: "warn" });
   }
   if (record.checkIn?.outsideGeofence || record.checkOut?.outsideGeofence) {
@@ -164,7 +170,7 @@ function Tanda({ record }: { record: AttendanceRecord }) {
   if (record.earlyLeaveMinutes > 0) {
     tanda.push({ teks: `pulang cepat ${durasi(record.earlyLeaveMinutes)}`, kelas: "warn" });
   }
-  if (record.correctedBy) tanda.push({ teks: "dikoreksi", kelas: "" });
+  if (record.edited) tanda.push({ teks: "dikoreksi", kelas: "" });
 
   if (tanda.length === 0) return <span className="muted">—</span>;
   return (
@@ -180,10 +186,10 @@ function Tanda({ record }: { record: AttendanceRecord }) {
 
 interface DetailProps {
   record: AttendanceRecord;
-  adminEmail: string;
-  shifts: ReturnType<typeof useShifts>;
-  employees: ReturnType<typeof useEmployees>;
-  settings: ReturnType<typeof useSettings>;
+  employeeName: string;
+  employee: Employee | undefined;
+  shifts: Shift[];
+  settings: Settings;
   onClose: () => void;
 }
 
@@ -196,14 +202,14 @@ interface DetailProps {
  */
 function DetailDialog({
   record,
-  adminEmail,
+  employeeName,
+  employee,
   shifts,
-  employees,
   settings,
   onClose,
 }: DetailProps) {
-  const [masuk, setMasuk] = useState(toLocalInput(record.checkIn?.at.toDate()));
-  const [pulang, setPulang] = useState(toLocalInput(record.checkOut?.at.toDate()));
+  const [masuk, setMasuk] = useState(toLocalInput(record.checkIn?.at));
+  const [pulang, setPulang] = useState(toLocalInput(record.checkOut?.at));
   const [shiftId, setShiftId] = useState(record.shiftId);
   const [note, setNote] = useState(record.note);
   const [busy, setBusy] = useState(false);
@@ -227,36 +233,31 @@ function DetailDialog({
       }
 
       const shift = shifts.find((s) => s.id === shiftId) ?? null;
-      const employee = employees.find((e) => e.id === record.employeeId);
+
+      /* Sisi yang dibuat admin dari nol ditandai "admin": jamnya memang tidak
+         berasal dari karyawan yang berdiri di depan kamera. */
+      const sisiPulang: Punch | null = waktuPulang
+        ? record.checkOut
+          ? { ...record.checkOut, at: waktuPulang }
+          : {
+              at: waktuPulang,
+              lat: null,
+              lon: null,
+              accuracyMeters: null,
+              distanceMeters: null,
+              outsideGeofence: false,
+              pinBy: "admin",
+              photo: "",
+            }
+        : null;
 
       const diperbarui = recompute(
         {
           ...record,
           shiftId: shift?.id ?? "",
-          shiftName: shift?.name ?? "",
-          shiftStart: shift?.start ?? "",
-          shiftEnd: shift?.end ?? "",
           offSchedule: shift === null,
-          checkIn: record.checkIn
-            ? { ...record.checkIn, at: Timestamp.fromDate(waktuMasuk) }
-            : null,
-          checkOut:
-            waktuPulang && record.checkOut
-              ? { ...record.checkOut, at: Timestamp.fromDate(waktuPulang) }
-              : waktuPulang
-                ? {
-                    at: Timestamp.fromDate(waktuPulang),
-                    lat: null,
-                    lon: null,
-                    accuracyMeters: null,
-                    distanceMeters: null,
-                    outsideGeofence: false,
-                    photoPath: "",
-                    pinOk: false,
-                    adminOverride: true,
-                    noPin: false,
-                  }
-                : null,
+          checkIn: record.checkIn ? { ...record.checkIn, at: waktuMasuk } : null,
+          checkOut: sisiPulang,
           note,
         },
         shift,
@@ -264,21 +265,7 @@ function DetailDialog({
         settings,
       );
 
-      await updateDoc(doc(db, "records", record.id), {
-        shiftId: diperbarui.shiftId,
-        shiftName: diperbarui.shiftName,
-        shiftStart: diperbarui.shiftStart,
-        shiftEnd: diperbarui.shiftEnd,
-        offSchedule: diperbarui.offSchedule,
-        checkIn: diperbarui.checkIn,
-        checkOut: diperbarui.checkOut,
-        lateMinutes: diperbarui.lateMinutes,
-        earlyLeaveMinutes: diperbarui.earlyLeaveMinutes,
-        workMinutes: diperbarui.workMinutes,
-        overtimeMinutes: diperbarui.overtimeMinutes,
-        note: diperbarui.note,
-        correctedBy: adminEmail,
-      });
+      await saveRecordCorrection(diperbarui);
       onClose();
     } catch (e) {
       setError(`Gagal menyimpan: ${(e as Error).message}`);
@@ -290,20 +277,19 @@ function DetailDialog({
   async function hapus() {
     if (
       !confirm(
-        `Hapus catatan absen ${record.employeeName} tanggal ${record.date}?\n\n` +
-          "Foto buktinya tetap tersimpan di penyimpanan, tapi catatannya hilang " +
-          "dari rekap dan ekspor.",
+        `Hapus catatan absen ${employeeName} tanggal ${record.date}?\n\n` +
+          "Foto buktinya ikut terhapus karena tersimpan di dalam catatan itu.",
       )
     ) {
       return;
     }
-    await deleteDoc(doc(db, "records", record.id));
+    await deleteRecord(record.id);
     onClose();
   }
 
   return (
     <Dialog
-      title={`${record.employeeName} — ${record.date}`}
+      title={`${employeeName} — ${record.date}`}
       onClose={onClose}
       footer={
         <>
@@ -360,13 +346,8 @@ function DetailDialog({
           <h3>Masuk</h3>
           {record.checkIn ? (
             <>
-              <PunchPhoto path={record.checkIn.photoPath} />
-              <Lokasi
-                lat={record.checkIn.lat}
-                lon={record.checkIn.lon}
-                akurasi={record.checkIn.accuracyMeters}
-                jarak={record.checkIn.distanceMeters}
-              />
+              <PunchPhoto photo={record.checkIn.photo} />
+              <Lokasi punch={record.checkIn} />
             </>
           ) : (
             <p className="muted small">tidak ada</p>
@@ -376,53 +357,33 @@ function DetailDialog({
           <h3>Pulang</h3>
           {record.checkOut ? (
             <>
-              <PunchPhoto path={record.checkOut.photoPath} />
-              <Lokasi
-                lat={record.checkOut.lat}
-                lon={record.checkOut.lon}
-                akurasi={record.checkOut.accuracyMeters}
-                jarak={record.checkOut.distanceMeters}
-              />
+              <PunchPhoto photo={record.checkOut.photo} />
+              <Lokasi punch={record.checkOut} />
             </>
           ) : (
             <p className="muted small">belum absen pulang</p>
           )}
         </div>
       </div>
-
-      <p className="small muted">
-        Dicatat perangkat {record.deviceId || "—"}
-        {record.correctedBy && ` · terakhir dikoreksi ${record.correctedBy}`}
-      </p>
     </Dialog>
   );
 }
 
-function Lokasi({
-  lat,
-  lon,
-  akurasi,
-  jarak,
-}: {
-  lat: number | null;
-  lon: number | null;
-  akurasi: number | null;
-  jarak: number | null;
-}) {
-  if (lat === null || lon === null) {
+function Lokasi({ punch }: { punch: Punch }) {
+  if (punch.lat === null || punch.lon === null) {
     return <p className="small muted">Lokasi tidak tercatat.</p>;
   }
   return (
     <p className="small muted">
       <a
-        href={`https://www.google.com/maps?q=${lat},${lon}`}
+        href={`https://www.google.com/maps?q=${punch.lat},${punch.lon}`}
         target="_blank"
         rel="noreferrer"
       >
-        {lat.toFixed(6)}, {lon.toFixed(6)}
+        {punch.lat.toFixed(6)}, {punch.lon.toFixed(6)}
       </a>
-      {akurasi !== null && ` · ±${Math.round(akurasi)} m`}
-      {jarak !== null && ` · ${meter(jarak)} dari cafe`}
+      {punch.accuracyMeters !== null && ` · ±${Math.round(punch.accuracyMeters)} m`}
+      {punch.distanceMeters !== null && ` · ${meter(punch.distanceMeters)} dari cafe`}
     </p>
   );
 }

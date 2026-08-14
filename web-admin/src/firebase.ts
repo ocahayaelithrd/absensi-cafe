@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 /* Nilai-nilai ini memang boleh publik: apiKey Firebase bukan kunci rahasia,
    melainkan pengenal proyek. Yang mengamankan data adalah pendaftaran mandiri
@@ -15,7 +14,8 @@ const firebaseConfig = {
   appId: "1:843346788064:web:7880e33412bb9635119a85",
 };
 
+/* Cloud Storage tidak dipakai: foto bukti absen tertanam di dokumen absennya
+   sendiri sebagai data URL, supaya ikut mengantre saat internet cafe mati. */
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app);

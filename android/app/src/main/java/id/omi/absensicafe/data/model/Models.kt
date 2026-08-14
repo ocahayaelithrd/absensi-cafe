@@ -2,16 +2,44 @@ package id.omi.absensicafe.data.model
 
 import java.time.Instant
 
+/* Model yang dipakai di dalam aplikasi.
+ *
+ * Ini BUKAN bentuk dokumen Firestore. Firestore masih memakai struktur warisan
+ * aplikasi lama — semuanya di bawah `cafe/main`, dengan nama field seperti
+ * `empId`, `inAt`, `lateMin`, dan roster di field `hari`. Penerjemahannya ada
+ * di `data/Mappers.kt`, supaya nama lama tidak menyebar ke seluruh kode.
+ *
+ * Model yang sama ditulis ulang di web admin pada `src/lib/types.ts`. */
+
 /** Mode pembatasan lokasi absen. */
 enum class GeoMode { OFF, WARN, STRICT;
     companion object {
         fun from(v: String?) = when (v) {
-            "strict", "wajib" -> STRICT
-            "warn", "peringatan" -> WARN
+            "strict" -> STRICT
+            "warn" -> WARN
             else -> OFF
         }
     }
     val wire: String get() = name.lowercase()
+}
+
+/** Cara sebuah absen diloloskan; di Firestore `inPinBy` / `outPinBy`. */
+enum class PinBy(val wire: String) {
+    /** PIN pribadi diterima. */
+    PIN("pin"),
+
+    /** PIN karyawan itu belum diatur admin. */
+    KOSONG("kosong"),
+
+    /** Diloloskan penyelia lewat PIN penyelia. */
+    ADMIN("admin"),
+
+    /** Fitur PIN sedang dimatikan di pengaturan. */
+    OFF("off");
+
+    companion object {
+        fun from(v: String?) = entries.firstOrNull { it.wire == v } ?: OFF
+    }
 }
 
 /**
@@ -41,23 +69,30 @@ data class Settings(
     val geoRadiusMeters: Int = 100,
     /** PIN yang dipegang penyelia untuk meloloskan absen bermasalah di tablet. */
     val kioskAdminPin: String = "1234",
-    /** Foto selfie wajib diambil saat absen. */
-    val photoRequired: Boolean = true
+    /** Karyawan wajib memasukkan PIN pribadi sebelum berfoto. */
+    val pinRequired: Boolean = true
 )
 
 data class Employee(
     val id: String,
     val name: String,
-    /** PBKDF2-HMAC-SHA256 dari PIN. Kosong berarti PIN belum diatur admin. */
+    /** Jabatan bebas, ikut dari data lama. */
+    val role: String = "",
+    /**
+     * PIN apa adanya dari data lama. Kosong berarti PIN belum diatur, atau
+     * sudah dipindahkan ke [pinHash] lewat web admin.
+     */
+    val plainPin: String = "",
+    /** PBKDF2-HMAC-SHA256 dari PIN, dibuat web admin. */
     val pinHash: String = "",
     val pinSalt: String = "",
-    /** Jumlah putaran PBKDF2 yang dipakai saat PIN dibuat. */
     val pinIterations: Int = 0,
     /** Toleransi khusus karyawan ini; null berarti ikut pengaturan umum. */
     val toleranceMinutes: Int? = null,
     val active: Boolean = true
 ) {
-    val hasPin: Boolean get() = pinHash.isNotBlank() && pinSalt.isNotBlank()
+    val hasPin: Boolean
+        get() = plainPin.isNotBlank() || (pinHash.isNotBlank() && pinSalt.isNotBlank())
 }
 
 data class Shift(
@@ -66,8 +101,7 @@ data class Shift(
     val name: String,
     /** Format "HH:mm". Bila [end] lebih awal dari [start], shift lewat tengah malam. */
     val start: String,
-    val end: String,
-    val order: Int = 0
+    val end: String
 ) {
     val crossesMidnight: Boolean get() = minutesOf(end) <= minutesOf(start)
 }
@@ -89,25 +123,20 @@ data class Punch(
     /** Jarak ke titik cafe dalam meter, null bila titik cafe belum diatur. */
     val distanceMeters: Double? = null,
     val outsideGeofence: Boolean = false,
-    /** Jalur foto di Cloud Storage, kosong bila foto belum terunggah. */
-    val photoPath: String = "",
-    /** PIN pribadi diterima. False berarti diloloskan penyelia atau PIN belum diatur. */
-    val pinOk: Boolean = true,
-    val adminOverride: Boolean = false,
-    val noPin: Boolean = false
+    val pinBy: PinBy = PinBy.OFF,
+    /**
+     * Foto bukti sebagai data URL JPEG, tertanam di dokumen absen. Kosong
+     * berarti kamera gagal atau absen itu memang tidak berfoto.
+     */
+    val photo: String = ""
 )
 
 data class AttendanceRecord(
     val id: String,
     val employeeId: String,
-    /** Nama saat absen dicatat, supaya rekap lama tidak berubah bila nama diganti. */
-    val employeeName: String,
     /** Tanggal kerja "yyyy-MM-dd", diambil dari tanggal shift dimulai. */
     val date: String,
     val shiftId: String = "",
-    val shiftName: String = "",
-    val shiftStart: String = "",
-    val shiftEnd: String = "",
     /** Absen di hari yang tidak ada di roster: tercatat, tapi telat & lembur tidak dihitung. */
     val offSchedule: Boolean = false,
     val checkIn: Punch? = null,
@@ -117,9 +146,8 @@ data class AttendanceRecord(
     val workMinutes: Int = 0,
     val overtimeMinutes: Int = 0,
     val note: String = "",
-    val deviceId: String = "",
-    /** Diisi web admin saat catatan dikoreksi dari PC. */
-    val correctedBy: String = ""
+    /** Pernah dikoreksi admin dari web; di Firestore bernama `edited`. */
+    val edited: Boolean = false
 ) {
     val complete: Boolean get() = checkIn != null && checkOut != null
 }

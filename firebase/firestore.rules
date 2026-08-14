@@ -2,7 +2,11 @@ rules_version = '2';
 
 /* Aturan akses Absensi Cafe.
 
-   Dua peran, disimpan di dokumen users/{uid} yang hanya bisa dibuat lewat
+   Seluruh data cafe bersarang di bawah satu dokumen `cafe/main`, warisan
+   aplikasi versi lama yang mencerminkan satu tablet ke awan. Bentuknya
+   dipertahankan supaya data yang sudah ada tetap terbaca.
+
+   Dua peran, disimpan di dokumen `users/{uid}` yang hanya bisa dibuat lewat
    console Firebase. Pendaftaran mandiri dimatikan di console, jadi tidak ada
    cara membuat akun baru dari luar.
 
@@ -35,55 +39,65 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    /* Data acuan: dibaca kios, ditulis admin. */
-    match /config/{doc} {
-      allow read: if masuk();
-      allow write: if admin();
-    }
-    match /employees/{id} {
-      allow read: if masuk();
-      allow write: if admin();
-    }
-    match /shifts/{id} {
-      allow read: if masuk();
-      allow write: if admin();
-    }
-    match /roster/{tanggal} {
-      allow read: if masuk();
-      allow write: if admin();
-    }
+    match /cafe/{cafeId} {
 
-    /* Absen: kios mencatat, admin mengoreksi, hanya admin yang boleh hapus.
+      /* Dokumen induk memuat pengaturan: dibaca kios, ditulis admin. */
+      allow read: if masuk();
+      allow write: if admin();
 
-       Kios tidak boleh memindahkan sebuah catatan ke karyawan atau tanggal
-       lain. Setelah absen pulang tercatat, kios juga tidak boleh lagi mengubah
-       jam masuk maupun jam pulangnya — satu-satunya alasan tablet menyentuh
-       catatan yang sudah lengkap adalah menambahkan jalur foto yang baru
-       selesai diunggah setelah internet hidup kembali. */
-    match /records/{id} {
-      function tetap(field) {
-        return request.resource.data[field] == resource.data[field];
+      match /employees/{id} {
+        allow read: if masuk();
+        allow write: if admin();
       }
-      function jamTidakBerubah() {
-        return request.resource.data.checkIn.at == resource.data.checkIn.at
-            && request.resource.data.checkOut.at == resource.data.checkOut.at;
+      match /shifts/{id} {
+        allow read: if masuk();
+        allow write: if admin();
       }
-      allow read: if masuk();
-      allow create: if (kiosk() || admin())
-                    && request.resource.data.employeeId is string
-                    && request.resource.data.date is string;
-      allow update: if admin()
-                    || (kiosk() && tetap('employeeId') && tetap('date')
-                        && (resource.data.checkOut == null || jamTidakBerubah()));
-      allow delete: if admin();
-    }
+      match /roster/{tanggal} {
+        allow read: if masuk();
+        allow write: if admin();
+      }
 
-    /* Catatan perangkat kios: dipakai admin untuk melihat tablet mana yang
-       masih hidup. Tiap tablet hanya menulis dokumennya sendiri. */
-    match /devices/{id} {
-      allow read: if masuk();
-      allow create, update: if kiosk() || admin();
-      allow delete: if admin();
+      /* Absen: kios mencatat, admin mengoreksi, hanya admin yang boleh hapus.
+
+         Kios tidak boleh memindahkan sebuah catatan ke karyawan atau tanggal
+         lain, dan tidak boleh menyentuh catatan yang absen pulangnya sudah
+         tercatat — sekali sebuah hari selesai, hanya admin yang boleh
+         mengubahnya. Foto ikut dalam penulisan yang sama, jadi tablet memang
+         tidak pernah perlu menyunting catatan yang sudah lengkap. */
+      match /records/{id} {
+        function tetap(field) {
+          return request.resource.data[field] == resource.data[field];
+        }
+        allow read: if masuk();
+        allow create: if (kiosk() || admin())
+                      && request.resource.data.empId is string
+                      && request.resource.data.date is string;
+        allow update: if admin()
+                      || (kiosk() && tetap('empId') && tetap('date')
+                          && resource.data.outAt == null);
+        allow delete: if admin();
+      }
+
+      /* Catatan tablet yang pernah tersambung, dipakai admin untuk melihat
+         kios mana yang masih hidup. */
+      match /devices/{id} {
+        allow read: if masuk();
+        allow create, update: if kiosk() || admin();
+        allow delete: if admin();
+      }
+
+      /* Kotak koreksi milik aplikasi versi lama. Tidak dipakai lagi — koreksi
+         sekarang ditulis admin langsung ke catatannya. Ditutup untuk kios agar
+         dokumen sisa tidak bisa dipakai menyuntikkan perubahan. */
+      match /koreksi/{id} {
+        allow read, write: if admin();
+      }
+
+      match /{sisa=**} {
+        allow read: if masuk();
+        allow write: if admin();
+      }
     }
 
     match /{document=**} {
