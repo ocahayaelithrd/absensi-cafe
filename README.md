@@ -7,7 +7,7 @@ satu proyek Firebase:
 | --- | --- | --- |
 | [`android/`](android) | Karyawan — tablet kios di kasir | Kotlin + Jetpack Compose |
 | [`web-admin/`](web-admin) | Admin — dari PC | React + TypeScript + Vite |
-| [`firebase/`](firebase) | Aturan akses dan indeks | Firestore & Cloud Storage rules |
+| [`firebase/`](firebase) | Aturan akses dan indeks | Firestore rules |
 
 Karyawan mengetuk namanya di tablet, memasukkan **PIN pribadi**, lalu kamera
 depan mengambil foto selfie. PIN membuktikan siapa yang absen, foto menyimpan
@@ -71,12 +71,16 @@ sebelumnya.
 
    Peran inilah yang dibaca aturan Firestore. Akun tanpa dokumen ini tidak bisa
    membaca apa pun.
-4. **Pasang aturan dan indeks** — kerjakan setelah langkah 3, karena aturan baru
-   mengunci akses ke akun yang punya dokumen `users/{uid}`:
+4. **Pasang aturan** — kerjakan setelah langkah 3, karena aturan itu mengunci
+   akses ke akun yang punya dokumen `users/{uid}`:
 
    ```bash
-   npx firebase-tools deploy --only firestore:rules,firestore:indexes,storage
+   npx firebase-tools deploy --only firestore:rules
    ```
+
+   Bisa juga ditempel langsung lewat **Firestore Database → Rules → Publish**,
+   tanpa perlu memasang CLI. Indeks tidak perlu di-deploy: absen hanya disaring
+   menurut satu field `date`, dan indeks satu field dibuat Firestore sendiri.
 
 ## Struktur data
 
@@ -102,9 +106,10 @@ untuk tablet, serta [`useData.ts`](web-admin/src/hooks/useData.ts) dan
 [`write.ts`](web-admin/src/lib/write.ts) untuk web. Sisanya bekerja dengan model
 yang bernama wajar.
 
-Cloud Storage tidak dipakai: foto bukti tertanam di dokumen absennya sendiri
-sebagai data URL JPEG 360×360 (sekitar 20–30 KB per lembar), jauh di bawah batas
-1 MB per dokumen.
+Cloud Storage tidak dipakai sama sekali — dan memang tidak tersedia, karena
+proyek ini berjalan di paket **Spark** yang tidak menyediakan bucket. Foto bukti
+tertanam di dokumen absennya sendiri sebagai data URL JPEG 360×360 (sekitar
+20–30 KB per lembar), jauh di bawah batas 1 MB per dokumen.
 
 ## Menjalankan web admin
 
@@ -323,6 +328,6 @@ sekali; hanya admin yang bisa mengoreksinya. Tablet memang tidak pernah perlu �
 foto ikut dalam penulisan yang sama, jadi tidak ada susulan apa pun setelah satu
 hari selesai.
 
-Cloud Storage tidak dipakai, dan aturannya di
-[`firebase/storage.rules`](firebase/storage.rules) menutup seluruh bucket supaya
-tidak menganga dengan aturan bawaan.
+Tidak ada permukaan lain yang perlu dijaga: Cloud Storage tidak aktif di paket
+Spark, sehingga satu-satunya pintu ke data cafe adalah Firestore dengan aturan
+di atas.
