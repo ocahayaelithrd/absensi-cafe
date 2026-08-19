@@ -9,6 +9,7 @@ composeBom = "2024.12.01"
 navigation = "2.8.5"
 firebaseBom = "33.7.0"
 camerax = "1.4.1"
+guava = "32.1.3-android"
 playServicesLocation = "21.3.0"
 coroutinesPlayServices = "1.9.0"
 exifinterface = "1.3.7"
@@ -41,6 +42,7 @@ camerax-core = { group = "androidx.camera", name = "camera-core", version.ref = 
 camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
 
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }

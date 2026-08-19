@@ -1,0 +1,4 @@
+# gradlew adalah skrip shell: CRLF membuatnya gagal dengan "bad interpreter"
+android/gradlew      text eol=lf
+android/gradlew.bat  text eol=crlf
+*.jar                binary

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "843346788064",
+    "project_id": "absensi-cafe-8da42",
+    "storage_bucket": "absensi-cafe-8da42.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:843346788064:android:d5609ed532f4be98119a85",
+        "android_client_info": {
+          "package_name": "id.omi.absensicafe"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBsYysAEhxCy2kp4PkLYzAG9ePTuBXK3Y4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:843346788064:android:c2ac06c1c0d9a1f8119a85",
+        "android_client_info": {
+          "package_name": "id.omi.absensicafe.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBsYysAEhxCy2kp4PkLYzAG9ePTuBXK3Y4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
