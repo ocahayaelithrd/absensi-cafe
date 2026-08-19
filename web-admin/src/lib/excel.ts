@@ -156,8 +156,8 @@ function tulisDetail(wb: ExcelJS.Workbook, input: ExportInput, denda: boolean) {
       name: nama(r.employeeId),
       shift: shift?.name ?? "—",
       jadwal: shift ? `${shift.start}–${shift.end}` : "—",
-      masuk: r.checkIn ? r.checkIn.at : null,
-      pulang: r.checkOut ? r.checkOut.at : null,
+      masuk: waktuExcel(r.checkIn?.at),
+      pulang: waktuExcel(r.checkOut?.at),
       late: r.lateMinutes,
       fine: fineFor(r.lateMinutes, input.settings),
       early: r.earlyLeaveMinutes,
@@ -180,6 +180,22 @@ function tulisDetail(wb: ExcelJS.Workbook, input: ExportInput, denda: boolean) {
       note: r.note,
     });
   }
+}
+
+/**
+ * Menyiapkan waktu agar terbaca sebagai jam setempat di Excel.
+ *
+ * ExcelJS mengubah `Date` menjadi nomor seri memakai `getTime()`, yang
+ * berbasis UTC — jam 08:24 di cafe (UTC+8) karena itu tertulis 00:24 di sel.
+ * Selisih zona waktu dikembalikan lebih dulu di sini, supaya angka yang
+ * tersimpan sungguh-sungguh jam dinding yang tercatat.
+ *
+ * Nilainya tetap tanggal sungguhan, bukan teks, jadi masih bisa diurutkan dan
+ * dijadikan pivot.
+ */
+function waktuExcel(date: Date | null | undefined): Date | null {
+  if (!date) return null;
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
 }
 
 function statusPin(punch: Punch | null): string {

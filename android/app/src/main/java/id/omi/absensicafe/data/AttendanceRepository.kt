@@ -108,9 +108,18 @@ class AttendanceRepository(
         awaitClose { reg.remove() }
     }
 
-    /** Tanggal yang perlu dipantau kios: hari ini dan dua hari sebelumnya. */
+    /**
+     * Tanggal yang perlu dipantau kios: dua hari ke belakang, hari ini, dan
+     * besok.
+     *
+     * Ke belakang untuk menemukan absen masuk yang belum ditutup, termasuk
+     * shift malam yang melewati tengah malam. Ke depan supaya jadwal besok
+     * sudah tersimpan lokal sebelum harinya tiba — tanpa itu ada celah sesaat
+     * lewat tengah malam ketika kios belum sempat memasang pendengar untuk
+     * tanggal baru, dan absen paling pagi bisa tertandai di luar jadwal.
+     */
     fun watchedDates(today: LocalDate = LocalDate.now(zone)): List<String> =
-        (0L..2L).map { AttendanceRules.formatDate(today.minusDays(it)) }
+        (-1L..2L).map { AttendanceRules.formatDate(today.minusDays(it)) }
 
     /**
      * Pengenal bergaya aplikasi lama: waktu dalam basis 36 ditambah beberapa

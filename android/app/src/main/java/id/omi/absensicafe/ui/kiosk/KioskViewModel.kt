@@ -20,13 +20,17 @@ import id.omi.absensicafe.domain.AttendanceRules
 import id.omi.absensicafe.domain.Pin
 import id.omi.absensicafe.location.LocationFix
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,28 +117,52 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
     private val _step = MutableStateFlow<KioskStep>(KioskStep.Grid)
     val step: StateFlow<KioskStep> = _step.asStateFlow()
 
+    private data class Acuan(
+        val settings: Settings,
+        val sortAscending: Boolean,
+        val shifts: List<Shift>,
+        val today: LocalDate
+    )
+
+    /**
+     * Tanggal hari ini, terbit ulang setiap kali harinya berganti.
+     *
+     * Tablet kios menyala terus-menerus dan tidak pernah dibuka ulang — layarnya
+     * bahkan sengaja dijaga tetap hidup. "Hari ini" yang dihitung sekali saat
+     * aplikasi dijalankan karena itu basi lewat tengah malam, dan kios berhenti
+     * menemukan jadwal hari berikutnya sehingga setiap absen ditandai di luar
+     * jadwal padahal rosternya ada.
+     */
+    private fun todayFlow(): Flow<LocalDate> = flow {
+        while (true) {
+            emit(LocalDate.now(zone))
+            delay(30_000)
+        }
+    }.distinctUntilChanged()
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val state: StateFlow<KioskUiState> =
         combine(
             repo.settingsFlow(),
             deviceStore.sortAscending,
-            repo.shiftsFlow()
-        ) { settings, asc, shifts -> Triple(settings, asc, shifts) }
-            .flatMapLatest { (settings, asc, shifts) ->
-                val dates = repo.watchedDates()
+            repo.shiftsFlow(),
+            todayFlow()
+        ) { settings, asc, shifts, today -> Acuan(settings, asc, shifts, today) }
+            .flatMapLatest { acuan ->
+                val dates = repo.watchedDates(acuan.today)
                 combine(
-                    repo.employeesFlow(asc),
+                    repo.employeesFlow(acuan.sortAscending),
                     repo.rosterFlow(dates),
                     repo.recordsFlow(dates)
                 ) { employees, roster, records ->
                     KioskUiState(
                         ready = true,
-                        settings = settings,
+                        settings = acuan.settings,
                         employees = employees,
-                        shifts = shifts,
+                        shifts = acuan.shifts,
                         roster = roster,
                         records = records,
-                        sortAscending = asc
+                        sortAscending = acuan.sortAscending
                     )
                 }
             }
