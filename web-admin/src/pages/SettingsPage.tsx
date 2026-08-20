@@ -1,23 +1,29 @@
 import { useEffect, useState } from "react";
-import { useDevices, useSettings } from "../hooks/useData";
+import { useDevices, useSettingsState } from "../hooks/useData";
 import { saveSettings } from "../lib/write";
 import { sortTiers } from "../lib/rules";
 import { rupiah } from "../lib/format";
 import type { FineTier, GeoMode, Settings } from "../lib/types";
 
 export default function SettingsPage() {
-  const tersimpan = useSettings();
+  const { settings: tersimpan, loaded } = useSettingsState();
   const devices = useDevices();
   const [draft, setDraft] = useState<Settings | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Menyalin sekali saat data pertama tiba; setelah itu formulir milik admin,
-  // supaya ketikan yang belum disimpan tidak tertimpa pendengar snapshot.
-  useEffect(() => {
-    setDraft((prev) => prev ?? tersimpan);
-  }, [tersimpan]);
+  /* Menyalin sekali saat pengaturan sungguhan tiba — bukan sebelumnya.
+     Menunggu `loaded` itu yang menentukan: tanpa itu formulir terisi nilai
+     bawaan pada render pertama, menahannya karena sudah "terisi", lalu
+     menimpa pengaturan cafe dengan bawaan begitu Simpan ditekan.
 
-  if (!draft) return <p className="muted">Memuat…</p>;
+     Sesudah tersalin, formulir menjadi milik admin: pendengar snapshot tidak
+     boleh menimpa ketikan yang belum disimpan. */
+  useEffect(() => {
+    if (!loaded) return;
+    setDraft((prev) => prev ?? tersimpan);
+  }, [loaded, tersimpan]);
+
+  if (!loaded || !draft) return <p className="muted">Memuat pengaturan…</p>;
 
   const ubah = (patch: Partial<Settings>) => {
     setDraft({ ...draft, ...patch });

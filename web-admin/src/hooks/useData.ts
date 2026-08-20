@@ -54,8 +54,23 @@ function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === "boolean" ? v : fallback;
 }
 
-export function useSettings(): Settings {
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
+export interface SettingsState {
+  settings: Settings;
+  /**
+   * Firestore sudah menjawab. Penting dibedakan dari "pengaturan kosong":
+   * formulir yang menyalin nilai bawaan sebelum jawaban tiba akan menimpa
+   * pengaturan sungguhan begitu disimpan.
+   */
+  loaded: boolean;
+}
+
+export function useSettingsState(): SettingsState {
+  const [state, setState] = useState<SettingsState>({
+    settings: defaultSettings,
+    loaded: false,
+  });
+  const setSettings = (s: Settings) => setState({ settings: s, loaded: true });
+
   useEffect(() => {
     return onSnapshot(cafeDoc(), (snap) => {
       const s = (snap.data()?.settings ?? {}) as DocumentData;
@@ -80,7 +95,12 @@ export function useSettings(): Settings {
       });
     });
   }, []);
-  return settings;
+  return state;
+}
+
+/** Pengaturan saja, untuk layar yang cukup memakai nilai bawaan selagi memuat. */
+export function useSettings(): Settings {
+  return useSettingsState().settings;
 }
 
 function toEmployee(snap: QueryDocumentSnapshot<DocumentData>): Employee {
