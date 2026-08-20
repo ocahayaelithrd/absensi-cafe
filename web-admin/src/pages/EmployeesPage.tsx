@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useEmployees, useSettings } from "../hooks/useData";
 import { hashPin, isValidPinFormat, makePinFields } from "../lib/pin";
 import {
+  clearFace,
   clearPin,
   deleteEmployee,
   employeesWithPlainPin,
   saveEmployee,
 } from "../lib/write";
 import Dialog from "../components/Dialog";
-import { hasPin, type Employee } from "../lib/types";
+import { hasFace, hasPin, type Employee } from "../lib/types";
 
 interface Draft {
   id: string | null;
@@ -105,6 +106,15 @@ export default function EmployeesPage() {
     await clearPin(e.id);
   }
 
+  async function hapusWajah(e: Employee) {
+    const pesan =
+      `Hapus pola wajah ${e.name}?\n\n` +
+      "Dia harus didaftarkan ulang dari tablet. Selama belum, absennya tetap " +
+      "tercatat — wajah yang belum didaftarkan tidak pernah menahan absen.";
+    if (!confirm(pesan)) return;
+    await clearFace(e.id);
+  }
+
   async function hapus(e: Employee) {
     const pesan =
       `Hapus ${e.name} dari daftar karyawan?\n\n` +
@@ -154,6 +164,7 @@ export default function EmployeesPage() {
               <th>Karyawan</th>
               <th>Jabatan</th>
               <th>PIN</th>
+              {settings.faceMode !== "off" && <th>Wajah</th>}
               <th className="num">Toleransi</th>
               <th>Status</th>
               <th />
@@ -162,7 +173,7 @@ export default function EmployeesPage() {
           <tbody>
             {employees.length === 0 && (
               <tr>
-                <td colSpan={6} className="center muted">
+                <td colSpan={settings.faceMode !== "off" ? 7 : 6} className="center muted">
                   Belum ada karyawan.
                 </td>
               </tr>
@@ -180,6 +191,15 @@ export default function EmployeesPage() {
                     <span className="tag bad">belum diatur</span>
                   )}
                 </td>
+                {settings.faceMode !== "off" && (
+                  <td>
+                    {hasFace(e) ? (
+                      <span className="tag good">{e.faceTemplateCount} pola</span>
+                    ) : (
+                      <span className="tag bad">belum didaftarkan</span>
+                    )}
+                  </td>
+                )}
                 <td className="num">
                   {e.toleranceMinutes === null ? (
                     <span className="muted">umum ({settings.toleranceMinutes}m)</span>
@@ -202,6 +222,11 @@ export default function EmployeesPage() {
                     {hasPin(e) && (
                       <button className="small" onClick={() => void hapusPin(e)}>
                         Hapus PIN
+                      </button>
+                    )}
+                    {hasFace(e) && (
+                      <button className="small" onClick={() => void hapusWajah(e)}>
+                        Hapus wajah
                       </button>
                     )}
                     <button className="small danger" onClick={() => void hapus(e)}>

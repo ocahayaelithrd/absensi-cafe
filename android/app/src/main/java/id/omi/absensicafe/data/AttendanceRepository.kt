@@ -134,6 +134,29 @@ class AttendanceRepository(
         records.document(record.id).set(record.toMap())
     }
 
+    /**
+     * Menyimpan wajah yang baru didaftarkan.
+     *
+     * Ini satu-satunya field karyawan yang boleh ditulis kios; aturan Firestore
+     * membatasinya tepat pada dua field ini. Pendaftaran memang harus terjadi di
+     * tablet — kamera, jarak, dan pencahayaannya sama dengan saat absen
+     * sehari-hari, dan itu yang paling menentukan akurasinya.
+     */
+    fun saveFaceTemplates(employeeId: String, templates: List<List<Float>>, modelId: String) {
+        employees.document(employeeId).update(
+            mapOf(
+                "faceTemplates" to templates.toTemplateMap(),
+                "faceModel" to modelId
+            )
+        )
+    }
+
+    fun clearFaceTemplates(employeeId: String) {
+        employees.document(employeeId).update(
+            mapOf("faceTemplates" to emptyMap<String, Any>(), "faceModel" to "")
+        )
+    }
+
     /** Menandai tablet ini masih hidup, supaya admin tahu kios mana yang mati. */
     fun touchDevice(deviceId: String, label: String, versionName: String) {
         devices.document(deviceId).set(

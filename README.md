@@ -38,6 +38,8 @@ menaikkan gaji siapa pun.
 ## Fitur
 
 - **Absen masuk & pulang** dengan PIN pribadi dan foto selfie sebagai bukti
+- **Pengenalan wajah** sebagai lapisan kedua setelah PIN, seluruhnya di dalam
+  tablet; nonaktif secara bawaan dan butuh berkas model yang disiapkan sendiri
 - **Jadwal shift per tanggal** — roster mingguan, shift tiap karyawan bisa
   berbeda tiap hari; shift lintas tengah malam didukung
 - **Hitung otomatis** keterlambatan, pulang cepat, durasi kerja, dan lembur
@@ -251,6 +253,79 @@ Firestore** — termasuk akun kios di tablet.
 
 Karena hash bergaram tidak bisa dibandingkan langsung, pemeriksaan PIN bentrok
 menghitung ulang PIN calon dengan garam tiap karyawan saat admin menyimpan.
+
+## Pengenalan wajah
+
+Lapisan kedua **setelah** PIN, bukan penggantinya. PIN membuktikan niat, wajah
+membuktikan kehadiran; titip absen jadi menuntut PIN dan wajah orangnya
+sekaligus. Nonaktif secara bawaan.
+
+Versi lama aplikasi ini pernah punya fitur serupa dan gagal, karena satu berkas
+HTML tanpa dependensi tidak bisa memuat model terlatih — pencocokannya dibuat
+tangan dari deskriptor gradien, dan wajah yang sama ditolak begitu orangnya
+bergeser sedikit. Kendala itu hilang di aplikasi Android: modelnya bisa
+dibundel.
+
+Alurnya: **ML Kit Face Detection** menemukan dan memotong wajah, lalu model
+**TensorFlow Lite** mengubahnya menjadi *embedding* — vektor beberapa ratus
+angka. Kemiripan dihitung dengan kosinus terhadap tiga pola yang didaftarkan,
+diambil yang tertinggi. Semuanya di dalam tablet, tanpa mengirim foto ke mana
+pun.
+
+Bedanya mendasar dari cara lama: embedding dilatih dari jutaan wajah untuk kebal
+terhadap sudut, jarak, dan pencahayaan. Kasus di sini juga kasus yang mudah —
+karyawan mengetuk namanya lebih dulu, jadi ini verifikasi satu-lawan-satu
+("benarkah ini Abner?"), bukan identifikasi satu-lawan-semua.
+
+**Modelnya tidak disertakan di repo.** Berkas `.tflite` harus Anda siapkan
+sendiri — lihat [`android/app/FACE-MODEL.md`](android/app/FACE-MODEL.md). Tanpa
+berkas itu, verifikasi dilewati dan absensi berjalan normal. Sikap yang sama
+berlaku untuk setiap kegagalan di jalur ini: model gagal dimuat, foto tidak
+terbaca, wajah belum didaftarkan — semuanya **tidak** menahan absen. Fitur
+pengaman tidak boleh berubah menjadi penghalang orang bekerja.
+
+### Yang tetap tidak bisa
+
+**Foto tetap lolos.** Tanpa deteksi keaslian, mengangkat foto cetak atau layar
+HP berisi wajah rekan akan diterima. Ini **verifikasi, bukan pengaman kebal** —
+dan itulah sebabnya PIN tidak dihapus.
+
+### Pendaftaran
+
+Dari **tablet**, di Setelan perangkat → Daftarkan wajah karyawan, tiga jepretan
+per orang dengan posisi kepala sedikit berbeda. Bukan dari web admin: kamera,
+jarak berdiri, dan pencahayaan saat mendaftar harus sama dengan saat absen
+sehari-hari, dan itu yang paling menentukan akurasinya. Jepretan yang wajahnya
+tidak terdeteksi tidak dihitung — lebih baik mengulang di tempat daripada
+menyimpan pola kosong yang nanti menolak orangnya sendiri setiap hari.
+
+Aturan Firestore memberi kios izin menulis tepat dua field karyawan,
+`faceTemplates` dan `faceModel`, dan tidak lebih; nama, PIN, dan toleransi tetap
+di luar jangkauannya. Pendaftarannya sendiri terkunci PIN penyelia.
+
+Template menyimpan pengenal model yang membuatnya. Mengganti berkas model
+membuat template lama tidak lagi dianggap sebanding dan semua orang harus
+didaftarkan ulang — embedding dari model berbeda tetap menghasilkan angka, tapi
+angkanya tidak berarti apa-apa.
+
+### Menyetel ambang
+
+Angka ambang **harus diukur di cafe sendiri**, bukan diwarisi. Caranya:
+
+1. Mulai dari mode **peringatan saja**. Absen tetap tercatat, hanya ditandai.
+2. Biarkan beberapa hari, lalu lihat kolom **Wajah** di halaman Absensi. Kolom
+   itu menampilkan skor terendah antara masuk dan pulang.
+3. Setel ambang di bawah skor terendah karyawan asli, dan di atas skor tertinggi
+   orang lain.
+4. Baru setelah itu naikkan ke **wajib cocok**.
+
+Tiga mode tersedia, sejajar dengan pembatasan lokasi: wajib cocok, peringatan
+saja, atau nonaktif. Pada mode wajib, absen yang tidak lolos ditahan dan baru
+diteruskan bila penyelia memasukkan PIN — catatannya lalu ditandai *izin
+penyelia*.
+
+Skor kedua sisi absen ikut terekspor ke Excel, sehingga penyetelan ambang bisa
+dikerjakan di spreadsheet.
 
 ## Lokasi absen
 

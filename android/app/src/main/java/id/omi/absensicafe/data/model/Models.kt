@@ -70,8 +70,30 @@ data class Settings(
     /** PIN yang dipegang penyelia untuk meloloskan absen bermasalah di tablet. */
     val kioskAdminPin: String = "1234",
     /** Karyawan wajib memasukkan PIN pribadi sebelum berfoto. */
-    val pinRequired: Boolean = true
+    val pinRequired: Boolean = true,
+    val faceMode: FaceMode = FaceMode.OFF,
+    /**
+     * Kemiripan minimum yang dianggap cocok, 0–100.
+     *
+     * Angka ini **harus diukur di cafe sendiri**, bukan diwarisi. Nilai bawaan
+     * hanya titik awal yang wajar; pencahayaan dan posisi tablet mengubah
+     * sebarannya. Naikkan bila orang lain lolos, turunkan bila karyawan asli
+     * sering ditolak.
+     */
+    val faceThreshold: Int = 65
 )
+
+/** Mode verifikasi wajah, sejajar dengan [GeoMode]. */
+enum class FaceMode { OFF, WARN, STRICT;
+    companion object {
+        fun from(v: String?) = when (v) {
+            "strict" -> STRICT
+            "warn" -> WARN
+            else -> OFF
+        }
+    }
+    val wire: String get() = name.lowercase()
+}
 
 data class Employee(
     val id: String,
@@ -89,10 +111,30 @@ data class Employee(
     val pinIterations: Int = 0,
     /** Toleransi khusus karyawan ini; null berarti ikut pengaturan umum. */
     val toleranceMinutes: Int? = null,
-    val active: Boolean = true
+    val active: Boolean = true,
+    /**
+     * Embedding wajah yang didaftarkan, satu unsur per jepretan.
+     *
+     * Disimpan sebagai `List<List<Float>>`, bukan array of array, supaya
+     * kesetaraan data class tetap berperilaku benar di Compose — `FloatArray`
+     * membandingkan acuan, bukan isi, dan itu membuat layar ikut tergambar
+     * ulang tanpa alasan.
+     */
+    val faceTemplates: List<List<Float>> = emptyList(),
+    /**
+     * Pengenal model yang membuat [faceTemplates].
+     *
+     * Embedding dari model berbeda sama sekali tidak sebanding: skornya tetap
+     * keluar, tapi angkanya tidak berarti apa-apa. Menyimpan pengenal ini
+     * membuat template lama diabaikan dan diminta daftar ulang, bukan
+     * menghasilkan kecocokan yang menyesatkan.
+     */
+    val faceModel: String = ""
 ) {
     val hasPin: Boolean
         get() = plainPin.isNotBlank() || (pinHash.isNotBlank() && pinSalt.isNotBlank())
+
+    val hasFace: Boolean get() = faceTemplates.isNotEmpty()
 }
 
 data class Shift(
@@ -124,6 +166,10 @@ data class Punch(
     val distanceMeters: Double? = null,
     val outsideGeofence: Boolean = false,
     val pinBy: PinBy = PinBy.OFF,
+    /** Kemiripan wajah 0–100; null berarti tidak diperiksa. */
+    val faceScore: Int? = null,
+    /** Wajah diperiksa tapi di bawah ambang, atau tidak terdeteksi. */
+    val faceFlag: Boolean = false,
     /**
      * Foto bukti sebagai data URL JPEG, tertanam di dokumen absen. Kosong
      * berarti kamera gagal atau absen itu memang tidak berfoto.

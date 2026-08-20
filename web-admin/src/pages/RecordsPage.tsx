@@ -89,13 +89,17 @@ export default function RecordsPage() {
               {settings.fineEnabled && <th className="num">Denda</th>}
               <th className="num">Kerja</th>
               <th className="num">Lembur</th>
+              {settings.faceMode !== "off" && <th className="num">Wajah</th>}
               <th>Tanda</th>
             </tr>
           </thead>
           <tbody>
             {tampil.length === 0 && (
               <tr>
-                <td colSpan={10} className="center muted">
+                <td
+                  colSpan={settings.faceMode !== "off" ? 11 : 10}
+                  className="center muted"
+                >
                   Tidak ada absen pada rentang ini.
                 </td>
               </tr>
@@ -131,6 +135,11 @@ export default function RecordsPage() {
                   <td className="num">
                     {r.overtimeMinutes > 0 ? durasi(r.overtimeMinutes) : "—"}
                   </td>
+                  {settings.faceMode !== "off" && (
+                    <td className="num">
+                      <Kemiripan record={r} threshold={settings.faceThreshold} />
+                    </td>
+                  )}
                   <td>
                     <Tanda record={r} />
                   </td>
@@ -167,6 +176,9 @@ export function Tanda({ record }: { record: AttendanceRecord }) {
   if (record.checkIn?.outsideGeofence || record.checkOut?.outsideGeofence) {
     tanda.push({ teks: "di luar area", kelas: "bad" });
   }
+  if (record.checkIn?.faceFlag || record.checkOut?.faceFlag) {
+    tanda.push({ teks: "wajah tidak cocok", kelas: "bad" });
+  }
   if (record.earlyLeaveMinutes > 0) {
     tanda.push({ teks: `pulang cepat ${durasi(record.earlyLeaveMinutes)}`, kelas: "warn" });
   }
@@ -181,6 +193,29 @@ export function Tanda({ record }: { record: AttendanceRecord }) {
         </span>
       ))}
     </>
+  );
+}
+
+/**
+ * Kemiripan wajah kedua sisi absen, angka yang dipakai admin menyetel ambang.
+ *
+ * Yang ditampilkan yang paling rendah antara masuk dan pulang: itu yang
+ * menentukan apakah absen tertahan, dan yang perlu diperhatikan saat menyetel.
+ */
+function Kemiripan({
+  record,
+  threshold,
+}: {
+  record: AttendanceRecord;
+  threshold: number;
+}) {
+  const skor = [record.checkIn?.faceScore, record.checkOut?.faceScore].filter(
+    (v): v is number => typeof v === "number",
+  );
+  if (skor.length === 0) return <span className="muted">—</span>;
+  const terendah = Math.min(...skor);
+  return (
+    <span className={`tag ${terendah >= threshold ? "good" : "bad"}`}>{terendah}%</span>
   );
 }
 
@@ -247,6 +282,8 @@ function DetailDialog({
               distanceMeters: null,
               outsideGeofence: false,
               pinBy: "admin",
+              faceScore: null,
+              faceFlag: false,
               photo: "",
             }
         : null;
@@ -347,6 +384,7 @@ function DetailDialog({
           {record.checkIn ? (
             <>
               <PunchPhoto photo={record.checkIn.photo} />
+              <SkorWajah punch={record.checkIn} threshold={settings.faceThreshold} />
               <Lokasi punch={record.checkIn} />
             </>
           ) : (
@@ -358,6 +396,7 @@ function DetailDialog({
           {record.checkOut ? (
             <>
               <PunchPhoto photo={record.checkOut.photo} />
+              <SkorWajah punch={record.checkOut} threshold={settings.faceThreshold} />
               <Lokasi punch={record.checkOut} />
             </>
           ) : (
@@ -366,6 +405,25 @@ function DetailDialog({
         </div>
       </div>
     </Dialog>
+  );
+}
+
+function SkorWajah({ punch, threshold }: { punch: Punch; threshold: number }) {
+  if (punch.faceScore === null) {
+    return (
+      <p className="small muted">
+        {punch.faceFlag ? "Wajah tidak terdeteksi." : "Wajah tidak diperiksa."}
+      </p>
+    );
+  }
+  return (
+    <p className="small muted">
+      Kemiripan wajah{" "}
+      <span className={`tag ${punch.faceScore >= threshold ? "good" : "bad"}`}>
+        {punch.faceScore}%
+      </span>{" "}
+      (ambang {threshold}%)
+    </p>
   );
 }
 

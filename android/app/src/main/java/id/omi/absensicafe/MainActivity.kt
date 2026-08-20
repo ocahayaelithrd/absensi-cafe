@@ -28,6 +28,8 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import id.omi.absensicafe.ui.auth.AuthViewModel
 import id.omi.absensicafe.ui.auth.LoginScreen
 import id.omi.absensicafe.ui.device.DeviceScreen
+import id.omi.absensicafe.ui.face.FaceEnrollScreen
+import id.omi.absensicafe.ui.face.FaceEnrollViewModel
 import id.omi.absensicafe.ui.kiosk.KioskScreen
 import id.omi.absensicafe.ui.kiosk.KioskViewModel
 import id.omi.absensicafe.ui.kiosk.PinPad
@@ -38,6 +40,7 @@ class MainActivity : ComponentActivity() {
 
     private val auth: AuthViewModel by viewModels()
     private val kiosk: KioskViewModel by viewModels()
+    private val enroll: FaceEnrollViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,7 +55,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Root(auth, kiosk, versionName())
+                    Root(auth, kiosk, enroll, versionName())
                 }
             }
         }
@@ -66,11 +69,16 @@ class MainActivity : ComponentActivity() {
 }
 
 /** Layar mana yang tampil di luar alur absen. */
-private enum class Route { KIOSK, DEVICE_PIN, DEVICE }
+private enum class Route { KIOSK, DEVICE_PIN, DEVICE, FACE_ENROLL }
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-private fun Root(auth: AuthViewModel, kiosk: KioskViewModel, versionName: String) {
+private fun Root(
+    auth: AuthViewModel,
+    kiosk: KioskViewModel,
+    enroll: FaceEnrollViewModel,
+    versionName: String
+) {
     val context = LocalContext.current
     val authState by auth.state.collectAsState()
     val kioskState by kiosk.state.collectAsState()
@@ -120,7 +128,7 @@ private fun Root(auth: AuthViewModel, kiosk: KioskViewModel, versionName: String
             onSelectEmployee = kiosk::selectEmployee,
             onSubmitPin = kiosk::submitPin,
             onUseAdminOverride = kiosk::useAdminOverride,
-            onSubmitGeoOverride = kiosk::submitGeoOverride,
+            onSubmitOverride = kiosk::submitOverride,
             onPhotoTaken = kiosk::onPhotoTaken,
             onCancel = kiosk::cancel,
             onToggleSort = kiosk::toggleSort,
@@ -178,12 +186,34 @@ private fun Root(auth: AuthViewModel, kiosk: KioskViewModel, versionName: String
                     label = baru
                     kiosk.setDeviceLabel(baru, versionName)
                 },
+                faceModelAvailable = app.faceScanner.available,
                 onRequestPermissions = { permissions.launchMultiplePermissionRequest() },
+                onEnrollFaces = { route = Route.FACE_ENROLL },
                 onLogout = {
                     auth.logout()
                     route = Route.KIOSK
                 },
                 onClose = { route = Route.KIOSK }
+            )
+        }
+
+        Route.FACE_ENROLL -> {
+            val enrollStep by enroll.step.collectAsState()
+            val enrollEmployees by enroll.employees.collectAsState()
+
+            FaceEnrollScreen(
+                step = enrollStep,
+                employees = enrollEmployees,
+                modelAvailable = enroll.modelAvailable,
+                shots = enroll.shots,
+                onSelect = enroll::select,
+                onShot = enroll::onShot,
+                onClearFace = enroll::clearFace,
+                onBack = enroll::back,
+                onClose = {
+                    enroll.back()
+                    route = Route.DEVICE
+                }
             )
         }
     }

@@ -3,6 +3,7 @@ package id.omi.absensicafe.data
 import com.google.firebase.firestore.DocumentSnapshot
 import id.omi.absensicafe.data.model.AttendanceRecord
 import id.omi.absensicafe.data.model.Employee
+import id.omi.absensicafe.data.model.FaceMode
 import id.omi.absensicafe.data.model.FineTier
 import id.omi.absensicafe.data.model.GeoMode
 import id.omi.absensicafe.data.model.PinBy
@@ -89,7 +90,9 @@ fun DocumentSnapshot.toSettings(): Settings {
         geoLon = s["geoLon"].asDoubleOrNull(),
         geoRadiusMeters = s["geoRadius"].asInt(bawaan.geoRadiusMeters),
         kioskAdminPin = s["pin"].asString(bawaan.kioskAdminPin),
-        pinRequired = s["pinMode"].asString("wajib") != "off"
+        pinRequired = s["pinMode"].asString("wajib") != "off",
+        faceMode = FaceMode.from(s["faceMode"] as? String),
+        faceThreshold = s["faceThreshold"].asInt(bawaan.faceThreshold)
     )
 }
 
@@ -106,9 +109,32 @@ fun DocumentSnapshot.toEmployee(): Employee? {
         pinSalt = d["pinSalt"].asString(),
         pinIterations = d["pinIterations"].asInt(0),
         toleranceMinutes = d["tolerance"].asIntOrNull(),
-        active = d["active"].asBool(true)
+        active = d["active"].asBool(true),
+        faceTemplates = d["faceTemplates"].asTemplates(),
+        faceModel = d["faceModel"].asString()
     )
 }
+
+/**
+ * Template wajah tersimpan sebagai peta, bukan daftar berisi daftar.
+ *
+ * Firestore menolak array yang langsung berisi array, jadi tiap jepretan
+ * menempati kuncinya sendiri: `{ t0: [...], t1: [...], t2: [...] }`. Kuncinya
+ * diurutkan saat dibaca supaya urutannya tetap.
+ */
+private fun Any?.asTemplates(): List<List<Float>> {
+    val peta = asMap()
+    if (peta.isEmpty()) return emptyList()
+    return peta.keys.sorted().mapNotNull { kunci ->
+        (peta[kunci] as? List<*>)
+            ?.mapNotNull { (it as? Number)?.toFloat() }
+            ?.takeIf { it.isNotEmpty() }
+    }
+}
+
+/** Bentuk yang ditulis kembali ke Firestore. */
+fun List<List<Float>>.toTemplateMap(): Map<String, Any?> =
+    withIndex().associate { (i, vektor) -> "t$i" to vektor }
 
 fun DocumentSnapshot.toShift(): Shift? {
     val d = data ?: return null
@@ -146,6 +172,8 @@ private fun Map<String, Any?>.toPunch(sisi: String): Punch? {
         distanceMeters = this["${sisi}Dist"].asDoubleOrNull(),
         outsideGeofence = this["${sisi}GeoFlag"].asBool(false),
         pinBy = PinBy.from(this["${sisi}PinBy"] as? String),
+        faceScore = this["${sisi}Score"].asIntOrNull(),
+        faceFlag = this["${sisi}Flag"].asBool(false),
         photo = this[if (sisi == "in") "fotoMasuk" else "fotoPulang"].asString()
     )
 }
@@ -182,6 +210,8 @@ private fun Punch.toFields(sisi: String): Map<String, Any?> = mapOf(
     "${sisi}GeoFlag" to outsideGeofence,
     "${sisi}PinBy" to pinBy.wire,
     "${sisi}PinFlag" to (pinBy == PinBy.KOSONG || pinBy == PinBy.ADMIN),
+    "${sisi}Score" to faceScore,
+    "${sisi}Flag" to faceFlag,
     (if (sisi == "in") "fotoMasuk" else "fotoPulang") to photo.ifBlank { null }
 )
 

@@ -31,7 +31,12 @@ export interface Settings {
   kioskAdminPin: string;
   /** Karyawan wajib memasukkan PIN pribadi; di Firestore `pinMode`. */
   pinRequired: boolean;
+  faceMode: FaceMode;
+  /** Kemiripan minimum yang dianggap cocok, 0–100. */
+  faceThreshold: number;
 }
+
+export type FaceMode = "off" | "warn" | "strict";
 
 export const defaultSettings: Settings = {
   cafeName: "Absensi Cafe",
@@ -49,6 +54,8 @@ export const defaultSettings: Settings = {
   geoRadiusMeters: 100,
   kioskAdminPin: "1234",
   pinRequired: true,
+  faceMode: "off",
+  faceThreshold: 65,
 };
 
 export interface Employee {
@@ -68,6 +75,18 @@ export interface Employee {
   /** null berarti ikut toleransi umum. */
   toleranceMinutes: number | null;
   active: boolean;
+  /**
+   * Jumlah pola wajah yang tersimpan. Vektornya sendiri tidak dibaca web —
+   * pencocokan hanya terjadi di tablet, jadi di sini cukup diketahui ada atau
+   * tidak.
+   */
+  faceTemplateCount: number;
+  /** Pengenal model yang membuat polanya, untuk ditampilkan saat perlu. */
+  faceModel: string;
+}
+
+export function hasFace(e: Employee): boolean {
+  return e.faceTemplateCount > 0;
 }
 
 export function hasPin(e: Employee): boolean {
@@ -102,6 +121,10 @@ export interface Punch {
   distanceMeters: number | null;
   outsideGeofence: boolean;
   pinBy: PinBy;
+  /** Kemiripan wajah 0–100; null berarti tidak diperiksa. */
+  faceScore: number | null;
+  /** Wajah diperiksa tapi di bawah ambang, atau tidak terdeteksi. */
+  faceFlag: boolean;
   /**
    * Foto bukti sebagai data URL JPEG, tertanam di dokumen absen.
    * Kosong berarti absen itu memang tidak berfoto.

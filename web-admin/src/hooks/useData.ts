@@ -92,6 +92,8 @@ export function useSettingsState(): SettingsState {
         geoRadiusMeters: num(s.geoRadius, defaultSettings.geoRadiusMeters),
         kioskAdminPin: String(s.pin ?? defaultSettings.kioskAdminPin),
         pinRequired: s.pinMode !== "off",
+        faceMode: s.faceMode === "strict" || s.faceMode === "warn" ? s.faceMode : "off",
+        faceThreshold: num(s.faceThreshold, defaultSettings.faceThreshold),
       });
     });
   }, []);
@@ -116,6 +118,11 @@ function toEmployee(snap: QueryDocumentSnapshot<DocumentData>): Employee {
     pinIterations: num(d.pinIterations, 0),
     toleranceMinutes: numOrNull(d.tolerance),
     active: bool(d.active, true),
+    faceTemplateCount:
+      d.faceTemplates && typeof d.faceTemplates === "object"
+        ? Object.keys(d.faceTemplates as Record<string, unknown>).length
+        : 0,
+    faceModel: str(d.faceModel),
   };
 }
 
@@ -243,6 +250,8 @@ function toPunch(d: DocumentData, sisi: "in" | "out"): Punch | null {
     distanceMeters: numOrNull(d[`${sisi}Dist`]),
     outsideGeofence: bool(d[`${sisi}GeoFlag`], false),
     pinBy: pinBy(d[`${sisi}PinBy`]),
+    faceScore: numOrNull(d[`${sisi}Score`]),
+    faceFlag: bool(d[`${sisi}Flag`], false),
     photo: str(d[sisi === "in" ? "fotoMasuk" : "fotoPulang"]),
   };
 }

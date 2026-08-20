@@ -43,8 +43,10 @@ fun DeviceScreen(
     appVersion: String,
     cameraGranted: Boolean,
     locationGranted: Boolean,
+    faceModelAvailable: Boolean,
     onLabelChange: (String) -> Unit,
     onRequestPermissions: () -> Unit,
+    onEnrollFaces: () -> Unit,
     onLogout: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -107,6 +109,31 @@ fun DeviceScreen(
                 if (!cameraGranted || !locationGranted) {
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = onRequestPermissions) { Text("Minta izin") }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Pengenalan wajah", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Baris(
+                    "Model di aplikasi ini",
+                    if (faceModelAvailable) "terpasang" else "tidak ada"
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Wajah harus didaftarkan dari tablet ini, bukan dari PC — kamera, " +
+                        "jarak berdiri, dan pencahayaannya harus sama dengan saat absen " +
+                        "sehari-hari. Mode dan ambang kemiripannya diatur di web admin.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = onEnrollFaces, enabled = faceModelAvailable) {
+                    Text("Daftarkan wajah karyawan")
                 }
             }
         }

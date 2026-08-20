@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import id.omi.absensicafe.data.PunchSide
 import id.omi.absensicafe.data.model.AttendanceRecord
 import id.omi.absensicafe.data.model.Employee
+import id.omi.absensicafe.data.model.FaceMode
 import id.omi.absensicafe.data.model.PinBy
 import id.omi.absensicafe.data.openRecordFor
 import id.omi.absensicafe.domain.AttendanceRules
@@ -70,7 +71,7 @@ fun KioskScreen(
     onSelectEmployee: (Employee) -> Unit,
     onSubmitPin: (String) -> Unit,
     onUseAdminOverride: () -> Unit,
-    onSubmitGeoOverride: (String) -> Unit,
+    onSubmitOverride: (String) -> Unit,
     onPhotoTaken: (java.io.File?, id.omi.absensicafe.location.LocationFix?) -> Unit,
     onCancel: () -> Unit,
     onToggleSort: () -> Unit,
@@ -115,11 +116,12 @@ fun KioskScreen(
             employeeName = step.employee.name,
             side = step.side,
             settings = state.settings,
+            busy = step.checking,
             onCaptured = onPhotoTaken,
             onCancel = onCancel
         )
 
-        is KioskStep.GeoBlocked -> Box(
+        is KioskStep.Blocked -> Box(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
@@ -145,7 +147,7 @@ fun KioskScreen(
                     subtitle = "PIN penyelia untuk tetap mencatat absen ini",
                     error = step.error,
                     confirmLabel = "Loloskan",
-                    onSubmit = onSubmitGeoOverride,
+                    onSubmit = onSubmitOverride,
                     onCancel = onCancel
                 )
             }
@@ -256,6 +258,7 @@ private fun GridScreen(
                     openRecord = terbuka,
                     finishedRecord = selesaiHariIni,
                     showNoPin = state.settings.pinRequired && !karyawan.hasPin,
+                    showNoFace = state.settings.faceMode != FaceMode.OFF && !karyawan.hasFace,
                     zone = zone,
                     onClick = { onSelectEmployee(karyawan) }
                 )
@@ -272,6 +275,7 @@ private fun EmployeeCard(
     openRecord: AttendanceRecord?,
     finishedRecord: AttendanceRecord?,
     showNoPin: Boolean,
+    showNoFace: Boolean,
     zone: ZoneId,
     onClick: () -> Unit
 ) {
@@ -348,6 +352,14 @@ private fun EmployeeCard(
                     color = MaterialTheme.colorScheme.error
                 )
             }
+            if (showNoFace) {
+                Text(
+                    "wajah belum didaftarkan",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -388,6 +400,9 @@ private fun ActivityList(state: KioskUiState, zone: ZoneId) {
                             r.checkOut?.outsideGeofence == true
                         ) {
                             add("di luar area")
+                        }
+                        if (r.checkIn?.faceFlag == true || r.checkOut?.faceFlag == true) {
+                            add("wajah tidak cocok")
                         }
                     }
                     Row(Modifier.padding(vertical = 3.dp)) {

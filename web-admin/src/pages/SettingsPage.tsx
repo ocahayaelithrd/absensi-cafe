@@ -3,7 +3,7 @@ import { useDevices, useSettingsState } from "../hooks/useData";
 import { saveSettings } from "../lib/write";
 import { sortTiers } from "../lib/rules";
 import { rupiah } from "../lib/format";
-import type { FineTier, GeoMode, Settings } from "../lib/types";
+import type { FaceMode, FineTier, GeoMode, Settings } from "../lib/types";
 
 export default function SettingsPage() {
   const { settings: tersimpan, loaded } = useSettingsState();
@@ -220,6 +220,60 @@ export default function SettingsPage() {
                 </button>
               )}
             </div>
+          </>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Pengenalan wajah</h2>
+        <label className="field">
+          <span>Mode</span>
+          <select
+            value={draft.faceMode}
+            onChange={(e) => ubah({ faceMode: e.target.value as FaceMode })}
+          >
+            <option value="off">Nonaktif — wajah tidak diperiksa</option>
+            <option value="warn">Peringatan saja — absen tercatat, ditandai bila tidak cocok</option>
+            <option value="strict">Wajib cocok — ditahan, kecuali diloloskan penyelia</option>
+          </select>
+        </label>
+
+        {draft.faceMode !== "off" && (
+          <>
+            <label className="field">
+              <span>Ambang kemiripan (0–100)</span>
+              <input
+                inputMode="numeric"
+                value={draft.faceThreshold}
+                onChange={(e) =>
+                  ubah({
+                    faceThreshold: Math.min(
+                      100,
+                      Number(e.target.value.replace(/\D/g, "") || 0),
+                    ),
+                  })
+                }
+              />
+            </label>
+            <p className="small muted">
+              Angka ini <strong>harus diukur di cafe Anda sendiri</strong>, bukan
+              diwarisi. Mulailah dari mode <em>peringatan saja</em> selama beberapa
+              hari, lihat kolom kemiripan di halaman Absensi, lalu setel ambangnya
+              di bawah skor terendah karyawan asli dan di atas skor tertinggi orang
+              lain. Baru setelah itu naikkan ke <em>wajib cocok</em>.
+            </p>
+            <p className="small muted">
+              Wajah didaftarkan dari tablet, di <strong>Setelan perangkat →
+              Daftarkan wajah karyawan</strong>. Bukan dari sini: kamera, jarak
+              berdiri, dan pencahayaan saat mendaftar harus sama dengan saat absen
+              sehari-hari.
+            </p>
+            <p className="small muted">
+              Perlu diketahui, ini <strong>verifikasi, bukan pengaman kebal</strong>.
+              Tanpa deteksi keaslian, foto cetak atau layar HP berisi wajah rekan
+              masih bisa lolos. Itulah sebabnya PIN tetap diminta lebih dulu — dua
+              lubang yang berbeda lebih sulit ditutup sekaligus.
+            </p>
           </>
         )}
       </div>

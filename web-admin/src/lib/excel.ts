@@ -122,6 +122,12 @@ function tulisDetail(wb: ExcelJS.Workbook, input: ExportInput, denda: boolean) {
     { header: "Di luar jadwal", key: "offSchedule", width: 14 },
     { header: "PIN masuk", key: "pinIn", width: 14 },
     { header: "PIN pulang", key: "pinOut", width: 14 },
+    ...(input.settings.faceMode !== "off"
+      ? [
+          { header: "Wajah masuk (%)", key: "faceIn", width: 16, format: BULAT },
+          { header: "Wajah pulang (%)", key: "faceOut", width: 17, format: BULAT },
+        ]
+      : []),
     { header: "Lintang masuk", key: "latIn", width: 15, format: KOORDINAT },
     { header: "Bujur masuk", key: "lonIn", width: 15, format: KOORDINAT },
     { header: "Akurasi masuk (m)", key: "accIn", width: 17, format: BULAT },
@@ -166,6 +172,8 @@ function tulisDetail(wb: ExcelJS.Workbook, input: ExportInput, denda: boolean) {
       offSchedule: r.offSchedule ? "ya" : "",
       pinIn: statusPin(r.checkIn),
       pinOut: statusPin(r.checkOut),
+      faceIn: r.checkIn?.faceScore ?? null,
+      faceOut: r.checkOut?.faceScore ?? null,
       latIn: r.checkIn?.lat ?? null,
       lonIn: r.checkIn?.lon ?? null,
       accIn: r.checkIn?.accuracyMeters ?? null,
@@ -247,6 +255,10 @@ function tulisInfo(wb: ExcelJS.Workbook, input: ExportInput) {
     ["Titik cafe", s.geoLat !== null && s.geoLon !== null ? `${s.geoLat}, ${s.geoLon}` : "belum diatur"],
     ["Radius (meter)", s.geoRadiusMeters],
     ["PIN pribadi karyawan", s.pinRequired ? "wajib" : "dimatikan"],
+    ["Pengenalan wajah", modeWajah(s.faceMode)],
+    ...(s.faceMode !== "off"
+      ? ([["Ambang kemiripan wajah (%)", s.faceThreshold]] as [string, number][])
+      : []),
   ];
 
   for (const [k, v] of isi) sheet.addRow({ k, v });
@@ -260,6 +272,12 @@ function tulisInfo(wb: ExcelJS.Workbook, input: ExportInput) {
 
 function modeLokasi(mode: Settings["geoMode"]): string {
   if (mode === "strict") return "wajib di area";
+  if (mode === "warn") return "peringatan saja";
+  return "nonaktif";
+}
+
+function modeWajah(mode: Settings["faceMode"]): string {
+  if (mode === "strict") return "wajib cocok";
   if (mode === "warn") return "peringatan saja";
   return "nonaktif";
 }

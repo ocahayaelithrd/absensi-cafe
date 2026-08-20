@@ -45,9 +45,21 @@ service cloud.firestore {
       allow read: if masuk();
       allow write: if admin();
 
+      /* Karyawan hanya boleh diubah admin — kecuali template wajah.
+
+         Pendaftaran wajah harus terjadi di tablet, karena kamera, jarak, dan
+         pencahayaannya sama dengan saat absen sehari-hari, dan itulah yang
+         paling menentukan akurasinya. Karena itu kios diizinkan menulis tepat
+         dua field ini dan tidak lebih: nama, PIN, toleransi, dan status aktif
+         tetap di luar jangkauannya. Pendaftaran itu sendiri masih terkunci PIN
+         penyelia di tablet. */
       match /employees/{id} {
         allow read: if masuk();
-        allow write: if admin();
+        allow create, delete: if admin();
+        allow update: if admin()
+                      || (kiosk() && request.resource.data
+                            .diff(resource.data).affectedKeys()
+                            .hasOnly(['faceTemplates', 'faceModel']));
       }
       match /shifts/{id} {
         allow read: if masuk();

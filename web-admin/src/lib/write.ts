@@ -43,6 +43,8 @@ export async function saveSettings(s: Settings): Promise<void> {
         geoLat: s.geoLat,
         geoLon: s.geoLon,
         geoRadius: s.geoRadiusMeters,
+        faceMode: s.faceMode,
+        faceThreshold: s.faceThreshold,
       },
     },
     { merge: true },
@@ -102,6 +104,17 @@ export async function clearPin(id: string): Promise<void> {
 
 export async function deleteEmployee(id: string): Promise<void> {
   await deleteDoc(employeeDoc(id));
+}
+
+/**
+ * Menghapus pola wajah seorang karyawan.
+ *
+ * Pendaftarannya sendiri hanya bisa dari tablet — kamera dan pencahayaannya
+ * harus sama dengan saat absen — tapi menghapus tidak butuh kamera, jadi bisa
+ * dari sini.
+ */
+export async function clearFace(id: string): Promise<void> {
+  await updateDoc(employeeDoc(id), { faceTemplates: {}, faceModel: "" });
 }
 
 export async function saveShift(id: string | null, s: Omit<Shift, "id">): Promise<void> {

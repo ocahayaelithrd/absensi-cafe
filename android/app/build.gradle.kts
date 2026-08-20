@@ -42,6 +42,11 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // Model wajah dipetakan langsung dari assets ke memori, jadi berkasnya
+        // tidak boleh dipadatkan saat APK dirakit.
+        noCompress += "tflite"
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -79,6 +84,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
 
     implementation(libs.androidx.exifinterface)
+    implementation(libs.mlkit.face.detection)
+    implementation(libs.tensorflow.lite)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.accompanist.permissions)
 

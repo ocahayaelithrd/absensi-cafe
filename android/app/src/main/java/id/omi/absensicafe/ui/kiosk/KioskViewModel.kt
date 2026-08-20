@@ -8,6 +8,7 @@ import id.omi.absensicafe.data.PhotoEncoder
 import id.omi.absensicafe.data.PunchSide
 import id.omi.absensicafe.data.model.AttendanceRecord
 import id.omi.absensicafe.data.model.Employee
+import id.omi.absensicafe.data.model.FaceMode
 import id.omi.absensicafe.data.model.GeoMode
 import id.omi.absensicafe.data.model.PinBy
 import id.omi.absensicafe.data.model.Punch
@@ -17,6 +18,9 @@ import id.omi.absensicafe.data.model.Settings
 import id.omi.absensicafe.data.model.Shift
 import id.omi.absensicafe.data.openRecordFor
 import id.omi.absensicafe.domain.AttendanceRules
+import id.omi.absensicafe.domain.FaceMatch
+import id.omi.absensicafe.domain.FaceOutcome
+import id.omi.absensicafe.domain.FaceResult
 import id.omi.absensicafe.domain.Pin
 import id.omi.absensicafe.location.LocationFix
 import kotlinx.coroutines.Dispatchers
@@ -56,11 +60,16 @@ sealed interface KioskStep {
     data class Capture(
         val employee: Employee,
         val side: PunchSide,
-        val pinBy: PinBy
+        val pinBy: PinBy,
+        /** Foto sudah diambil dan wajahnya sedang diperiksa. */
+        val checking: Boolean = false
     ) : KioskStep
 
-    /** Absen ditahan karena di luar area; menunggu izin penyelia. */
-    data class GeoBlocked(
+    /**
+     * Absen ditahan — di luar area, atau wajahnya tidak cocok. Menunggu izin
+     * penyelia.
+     */
+    data class Blocked(
         val pending: PendingPunch,
         val reason: String,
         val error: String? = null
@@ -77,7 +86,7 @@ sealed interface KioskStep {
     ) : KioskStep
 }
 
-/** Absen yang sudah difoto tapi belum tercatat, menunggu keputusan geofence. */
+/** Absen yang sudah difoto tapi belum tercatat, menunggu keputusan penjagaan. */
 data class PendingPunch(
     val employee: Employee,
     val side: PunchSide,
@@ -85,7 +94,8 @@ data class PendingPunch(
     val photo: File?,
     val fix: LocationFix?,
     val distanceMeters: Double?,
-    val outside: Boolean
+    val outside: Boolean,
+    val face: FaceResult = FaceResult(FaceOutcome.DISABLED)
 )
 
 data class KioskUiState(
@@ -112,6 +122,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = (app as AbsensiApp).repository
     private val deviceStore = (app as AbsensiApp).deviceStore
+    private val scanner = (app as AbsensiApp).faceScanner
     private val zone: ZoneId = ZoneId.systemDefault()
 
     private val _step = MutableStateFlow<KioskStep>(KioskStep.Grid)
@@ -226,8 +237,8 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         _step.value = s.copy(adminMode = true, error = null)
     }
 
-    fun submitGeoOverride(pin: String) {
-        val s = _step.value as? KioskStep.GeoBlocked ?: return
+    fun submitOverride(pin: String) {
+        val s = _step.value as? KioskStep.Blocked ?: return
         if (pin != state.value.settings.kioskAdminPin) {
             _step.value = s.copy(error = "PIN penyelia salah")
             return
@@ -236,52 +247,100 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancel() {
-        (_step.value as? KioskStep.GeoBlocked)?.pending?.photo?.delete()
+        (_step.value as? KioskStep.Blocked)?.pending?.photo?.delete()
         _step.value = KioskStep.Grid
     }
 
     /**
-     * Dipanggil setelah foto selesai diambil. Di sini geofence diperiksa:
-     * pada mode wajib, absen di luar radius ditahan dan baru diteruskan bila
-     * penyelia memasukkan PIN.
+     * Dipanggil setelah foto selesai diambil.
+     *
+     * Dua penjagaan diperiksa di sini: lokasi dan wajah. Pada mode wajib,
+     * absen yang tidak lolos ditahan dan baru diteruskan bila penyelia
+     * memasukkan PIN. Pemeriksaan wajah berjalan di latar karena menjalankan
+     * model butuh waktu; layarnya menampilkan keadaan memeriksa supaya karyawan
+     * tidak menekan tombol dua kali.
      */
     fun onPhotoTaken(photo: File?, fix: LocationFix?) {
         val s = _step.value as? KioskStep.Capture ?: return
-        val settings = state.value.settings
+        if (s.checking) return
+        _step.value = s.copy(checking = true)
 
-        val jarak = if (fix != null && settings.geoLat != null && settings.geoLon != null) {
-            AttendanceRules.distanceMeters(fix.lat, fix.lon, settings.geoLat, settings.geoLon)
-        } else null
+        viewModelScope.launch {
+            val settings = state.value.settings
 
-        val diLuar = when {
-            settings.geoMode == GeoMode.OFF -> false
-            jarak == null -> true
-            else -> jarak > settings.geoRadiusMeters
-        }
+            val jarak = if (fix != null && settings.geoLat != null && settings.geoLon != null) {
+                AttendanceRules.distanceMeters(fix.lat, fix.lon, settings.geoLat, settings.geoLon)
+            } else null
 
-        val pending = PendingPunch(
-            employee = s.employee,
-            side = s.side,
-            pinBy = s.pinBy,
-            photo = photo,
-            fix = fix,
-            distanceMeters = jarak,
-            outside = diLuar
-        )
-
-        if (settings.geoMode == GeoMode.STRICT && diLuar && s.pinBy != PinBy.ADMIN) {
-            val alasan = when {
-                fix == null -> "Lokasi belum didapat. Nyalakan GPS dan tunggu sinyal."
-                fix.mocked -> "Lokasi terdeteksi palsu."
-                jarak == null -> "Titik cafe belum diatur admin."
-                else -> "Berada ${AttendanceRules.formatMeters(jarak)} dari cafe, " +
-                    "batasnya ${settings.geoRadiusMeters} m."
+            val diLuar = when {
+                settings.geoMode == GeoMode.OFF -> false
+                jarak == null -> true
+                else -> jarak > settings.geoRadiusMeters
             }
-            _step.value = KioskStep.GeoBlocked(pending, alasan)
-            return
-        }
 
-        commit(pending)
+            val wajah = periksaWajah(photo, s.employee, settings)
+
+            val pending = PendingPunch(
+                employee = s.employee,
+                side = s.side,
+                pinBy = s.pinBy,
+                photo = photo,
+                fix = fix,
+                distanceMeters = jarak,
+                outside = diLuar,
+                face = wajah
+            )
+
+            val sudahDiloloskan = s.pinBy == PinBy.ADMIN
+
+            val alasanLokasi = if (settings.geoMode == GeoMode.STRICT && diLuar) {
+                when {
+                    fix == null -> "Lokasi belum didapat. Nyalakan GPS dan tunggu sinyal."
+                    fix.mocked -> "Lokasi terdeteksi palsu."
+                    jarak == null -> "Titik cafe belum diatur admin."
+                    else -> "Berada ${AttendanceRules.formatMeters(jarak)} dari cafe, " +
+                        "batasnya ${settings.geoRadiusMeters} m."
+                }
+            } else null
+
+            val alasanWajah = if (wajah.blocks(settings.faceMode)) {
+                when (wajah.outcome) {
+                    FaceOutcome.NO_FACE ->
+                        "Wajah tidak terdeteksi di foto. Hadapkan wajah ke kamera."
+                    else ->
+                        "Wajah tidak cocok — kemiripan ${wajah.score}%, " +
+                            "batasnya ${settings.faceThreshold}%."
+                }
+            } else null
+
+            val alasan = alasanLokasi ?: alasanWajah
+            if (alasan != null && !sudahDiloloskan) {
+                _step.value = KioskStep.Blocked(pending, alasan)
+                return@launch
+            }
+
+            commit(pending)
+        }
+    }
+
+    /**
+     * Memeriksa wajah pada foto yang baru diambil.
+     *
+     * Setiap kegagalan di jalur ini — model tidak ada, foto tidak terbaca,
+     * deteksi meleset — mengembalikan hasil yang tidak menahan absen. Fitur
+     * pengaman tidak boleh berubah menjadi penghalang orang bekerja.
+     */
+    private suspend fun periksaWajah(
+        photo: File?,
+        employee: Employee,
+        settings: Settings
+    ): FaceResult {
+        if (settings.faceMode == FaceMode.OFF) return FaceResult(FaceOutcome.DISABLED)
+        if (photo == null) return FaceResult(FaceOutcome.NO_FACE)
+        if (!scanner.available) return FaceResult(FaceOutcome.UNAVAILABLE)
+
+        val vektor = withContext(Dispatchers.Default) { scanner.embedFrom(photo) }
+        return FaceMatch.decide(vektor, employee, scanner.modelId, settings)
     }
 
     /**
@@ -302,6 +361,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             if (p.pinBy == PinBy.ADMIN) add("Izin penyelia")
             if (p.outside) add("Di luar area")
             if (p.fix?.mocked == true) add("Lokasi palsu")
+            if (p.face.flagged) add(FaceMatch.label(p.face))
         }
 
         val terbuka = st.records.openRecordFor(p.employee.id, now)
@@ -385,6 +445,8 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         distanceMeters = p.distanceMeters,
         outsideGeofence = p.outside,
         pinBy = p.pinBy,
+        faceScore = p.face.score,
+        faceFlag = p.face.flagged,
         photo = photo
     )
 
