@@ -29,13 +29,47 @@ ditangani ML Kit.
 | Tipe masukan | float32 (piksel dipetakan ke −1..1) atau uint8 |
 | Bentuk keluaran | `[1, dimensi]` — 128, 192, atau 512 semuanya bisa |
 
-Yang lazim dipakai adalah **MobileFaceNet** (keluaran 192) atau **FaceNet**
-(keluaran 128 atau 512). Keduanya tersedia dalam bentuk `.tflite` di berbagai
-kumpulan model publik.
+Yang lazim dipakai adalah **MobileFaceNet** (masukan 112×112, keluaran 192) atau
+**FaceNet** (masukan 160×160, keluaran 128).
 
-**Lisensi dan akurasinya harus Anda periksa sendiri.** Model wajah beredar
-dengan asal-usul bobot yang bermacam-macam, dan sebagian tidak boleh dipakai
-komersial. Ini bukan sesuatu yang bisa dipastikan dari kode.
+## Penyiapan piksel harus cocok
+
+Ini bagian yang paling mudah terlewat: cara piksel disiapkan sebelum masuk ke
+model **harus sama dengan cara modelnya dilatih**. Salah pilih tidak memunculkan
+galat apa pun — skor kemiripannya sekadar turun, dan penyebabnya hampir tidak
+mungkin ditebak dari hasilnya.
+
+| Model | Penyiapan | Nilai di `FaceEmbedder.kt` |
+| --- | --- | --- |
+| MobileFaceNet, keluarga InsightFace | piksel dipetakan ke −1..1 | `Normalization.SIGNED` (bawaan) |
+| FaceNet (David Sandberg, keras-facenet) | standardisasi per foto | `Normalization.STANDARDIZED` |
+
+Bawaannya `SIGNED`. Kalau memakai FaceNet, ubah baris `private val normalization`
+di [`FaceEmbedder.kt`](src/main/java/id/omi/absensicafe/face/FaceEmbedder.kt).
+
+## Dari mana mengunduhnya
+
+Beberapa repositori Android publik menyertakan berkas `.tflite` siap pakai di
+folder `assets` masing-masing:
+
+- [shubham0204/FaceRecognition_With_FaceNet_Android](https://github.com/shubham0204/FaceRecognition_With_FaceNet_Android)
+  — FaceNet, masukan 160×160, keluaran 128. Repositorinya berlisensi Apache-2.0.
+  Pakai `Normalization.STANDARDIZED`.
+- [MCarlomagno/FaceRecognitionAuth](https://github.com/MCarlomagno/FaceRecognitionAuth/blob/master/assets/mobilefacenet.tflite)
+  — `mobilefacenet.tflite`, masukan 112×112, keluaran 192. Repositorinya
+  berlisensi BSD-3-Clause. Cocok dengan bawaan `SIGNED`.
+- [sirius-ai/MobileFaceNet_TF](https://github.com/sirius-ai/MobileFaceNet_TF)
+  — sumber MobileFaceNet aslinya, kalau ingin mengubah sendiri ke TFLite.
+
+Unduh berkasnya lewat tombol **Download raw file** di GitHub, lalu **ganti
+namanya** menjadi `face_embedder.tflite`.
+
+**Lisensi bobotnya perlu Anda periksa sendiri, dan itu bukan hal yang sama
+dengan lisensi repositorinya.** Lisensi Apache-2.0 atau BSD di sebuah repo
+mencakup kodenya; bobot model wajah umumnya dilatih atas kumpulan data seperti
+MS-Celeb-1M, VGGFace2, atau CASIA-WebFace, yang sebagian bersyarat "hanya untuk
+penelitian". Untuk aplikasi yang dipakai menghitung gaji karyawan, itu perlu
+dipastikan lebih dulu — dan itu bukan sesuatu yang bisa dijamin dari kode.
 
 ## Setelah berkasnya dipasang
 

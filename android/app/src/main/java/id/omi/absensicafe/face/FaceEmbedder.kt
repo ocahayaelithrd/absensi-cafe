@@ -120,11 +120,30 @@ class FaceEmbedder(private val context: Context) {
     }
 
     /**
-     * Menyusun tensor masukan dari piksel.
+     * Cara piksel disiapkan sebelum masuk ke model.
      *
-     * Model wajah float umumnya dilatih dengan piksel yang dipetakan ke
-     * rentang -1..1; itu yang dipakai di sini. Model terkuantisasi menerima
-     * byte apa adanya.
+     * Ini **harus cocok dengan cara modelnya dilatih**. Salah pilih tidak
+     * memunculkan galat apa pun — skornya sekadar turun, dan penyebabnya
+     * hampir tidak mungkin ditebak dari hasilnya.
+     */
+    private enum class Normalization {
+        /** Piksel dipetakan ke -1..1. Dipakai MobileFaceNet dan model keluarga InsightFace. */
+        SIGNED,
+
+        /**
+         * Setiap foto distandarkan memakai rata-rata dan simpangannya sendiri
+         * (*prewhitening*). Dipakai FaceNet, termasuk turunan David Sandberg
+         * dan keras-facenet.
+         */
+        STANDARDIZED
+    }
+
+    /** Ganti ini kalau model yang dipasang menuntut penyiapan yang lain. */
+    private val normalization = Normalization.SIGNED
+
+    /**
+     * Menyusun tensor masukan dari piksel. Model terkuantisasi menerima byte
+     * apa adanya, tanpa penyiapan.
      */
     private fun bufferOf(bitmap: Bitmap): ByteBuffer {
         val bytesPerChannel = if (quantized) 1 else 4
@@ -135,22 +154,51 @@ class FaceEmbedder(private val context: Context) {
         val piksel = IntArray(inputWidth * inputHeight)
         bitmap.getPixels(piksel, 0, inputWidth, 0, 0, inputWidth, inputHeight)
 
-        for (p in piksel) {
-            val r = (p shr 16) and 0xFF
-            val g = (p shr 8) and 0xFF
-            val b = p and 0xFF
-            if (quantized) {
-                buffer.put(r.toByte())
-                buffer.put(g.toByte())
-                buffer.put(b.toByte())
-            } else {
-                buffer.putFloat((r - 127.5f) / 127.5f)
-                buffer.putFloat((g - 127.5f) / 127.5f)
-                buffer.putFloat((b - 127.5f) / 127.5f)
+        if (quantized) {
+            for (p in piksel) {
+                buffer.put(((p shr 16) and 0xFF).toByte())
+                buffer.put(((p shr 8) and 0xFF).toByte())
+                buffer.put((p and 0xFF).toByte())
             }
+            buffer.rewind()
+            return buffer
+        }
+
+        val (geser, bagi) = when (normalization) {
+            Normalization.SIGNED -> 127.5f to 127.5f
+            Normalization.STANDARDIZED -> sebaran(piksel)
+        }
+
+        for (p in piksel) {
+            buffer.putFloat((((p shr 16) and 0xFF) - geser) / bagi)
+            buffer.putFloat((((p shr 8) and 0xFF) - geser) / bagi)
+            buffer.putFloat(((p and 0xFF) - geser) / bagi)
         }
         buffer.rewind()
         return buffer
+    }
+
+    /**
+     * Rata-rata dan simpangan baku seluruh kanal satu foto.
+     *
+     * Simpangan dibatasi bawah agar foto yang nyaris rata warna — misalnya
+     * ruangan gelap — tidak menghasilkan pembagian yang meledak.
+     */
+    private fun sebaran(piksel: IntArray): Pair<Float, Float> {
+        var jumlah = 0.0
+        var jumlahKuadrat = 0.0
+        val n = piksel.size * 3.0
+        for (p in piksel) {
+            val r = ((p shr 16) and 0xFF).toDouble()
+            val g = ((p shr 8) and 0xFF).toDouble()
+            val b = (p and 0xFF).toDouble()
+            jumlah += r + g + b
+            jumlahKuadrat += r * r + g * g + b * b
+        }
+        val rata = jumlah / n
+        val varians = (jumlahKuadrat / n) - (rata * rata)
+        val simpangan = Math.sqrt(Math.max(varians, 0.0))
+        return rata.toFloat() to Math.max(simpangan, 1.0).toFloat()
     }
 
     /** Panjang vektor dijadikan satu, supaya kosinus tidak terpengaruh skala. */
