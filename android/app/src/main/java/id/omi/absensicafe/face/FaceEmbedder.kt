@@ -138,8 +138,14 @@ class FaceEmbedder(private val context: Context) {
         STANDARDIZED
     }
 
-    /** Ganti ini kalau model yang dipasang menuntut penyiapan yang lain. */
-    private val normalization = Normalization.SIGNED
+    /**
+     * Disetel untuk **FaceNet**, model yang dipakai pemasangan ini
+     * (`facenet.tflite`, masukan 160×160, keluaran 128).
+     *
+     * Ganti ke [Normalization.SIGNED] bila berkas modelnya ditukar dengan
+     * MobileFaceNet atau turunan InsightFace lainnya.
+     */
+    private val normalization = Normalization.STANDARDIZED
 
     /**
      * Menyusun tensor masukan dari piksel. Model terkuantisasi menerima byte

@@ -44,17 +44,26 @@ mungkin ditebak dari hasilnya.
 | MobileFaceNet, keluarga InsightFace | piksel dipetakan ke −1..1 | `Normalization.SIGNED` (bawaan) |
 | FaceNet (David Sandberg, keras-facenet) | standardisasi per foto | `Normalization.STANDARDIZED` |
 
-Bawaannya `SIGNED`. Kalau memakai FaceNet, ubah baris `private val normalization`
-di [`FaceEmbedder.kt`](src/main/java/id/omi/absensicafe/face/FaceEmbedder.kt).
+Pemasangan ini disetel ke **`STANDARDIZED`**, karena model yang dipakai FaceNet.
+Kalau berkas modelnya ditukar dengan MobileFaceNet, ubah baris
+`private val normalization` di
+[`FaceEmbedder.kt`](src/main/java/id/omi/absensicafe/face/FaceEmbedder.kt)
+menjadi `SIGNED`.
 
 ## Dari mana mengunduhnya
 
 Beberapa repositori Android publik menyertakan berkas `.tflite` siap pakai di
 folder `assets` masing-masing:
 
-- [shubham0204/FaceRecognition_With_FaceNet_Android](https://github.com/shubham0204/FaceRecognition_With_FaceNet_Android)
-  — FaceNet, masukan 160×160, keluaran 128. Repositorinya berlisensi Apache-2.0.
-  Pakai `Normalization.STANDARDIZED`.
+- **Yang dipakai pemasangan ini** — `facenet.tflite` (23,7 MB), masukan 160×160,
+  keluaran 128. Repositorinya berlisensi Apache-2.0. Tautan langsung:
+
+  ```
+  https://raw.githubusercontent.com/shubham0204/FaceRecognition_With_FaceNet_Android/master/app/src/main/assets/facenet.tflite
+  ```
+
+  Di repo yang sama ada juga varian `_512` dan `_int_quantized`; keduanya jalan
+  tetapi menuntut penyesuaian lain, jadi ambil yang tanpa akhiran.
 - [MCarlomagno/FaceRecognitionAuth](https://github.com/MCarlomagno/FaceRecognitionAuth/blob/master/assets/mobilefacenet.tflite)
   — `mobilefacenet.tflite`, masukan 112×112, keluaran 192. Repositorinya
   berlisensi BSD-3-Clause. Cocok dengan bawaan `SIGNED`.
