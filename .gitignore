@@ -10,6 +10,9 @@ android/captures/
 *.keystore
 !debug.keystore
 
+# Model wajah diambil terpisah — lihat android/app/FACE-MODEL.md
+*.tflite
+
 # Web admin
 web-admin/node_modules/
 web-admin/dist/
