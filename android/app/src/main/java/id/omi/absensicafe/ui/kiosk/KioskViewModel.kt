@@ -105,7 +105,9 @@ data class KioskUiState(
     val shifts: List<Shift> = emptyList(),
     val roster: Map<String, RosterDay> = emptyMap(),
     val records: List<AttendanceRecord> = emptyList(),
-    val sortAscending: Boolean = true
+    val sortAscending: Boolean = true,
+    /** Galat bacaan Firestore yang perlu ditindak, atau null selama sehat. */
+    val bacaanGagal: String? = null
 ) {
     /** Karyawan yang PIN-nya belum diatur admin, untuk peringatan di layar. */
     val withoutPin: List<String>
@@ -164,8 +166,9 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                 combine(
                     repo.employeesFlow(acuan.sortAscending),
                     repo.rosterFlow(dates),
-                    repo.recordsFlow(dates)
-                ) { employees, roster, records ->
+                    repo.recordsFlow(dates),
+                    repo.bacaanGagal
+                ) { employees, roster, records, gagal ->
                     KioskUiState(
                         ready = true,
                         settings = acuan.settings,
@@ -173,7 +176,8 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                         shifts = acuan.shifts,
                         roster = roster,
                         records = records,
-                        sortAscending = acuan.sortAscending
+                        sortAscending = acuan.sortAscending,
+                        bacaanGagal = gagal
                     )
                 }
             }

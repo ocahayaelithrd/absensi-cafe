@@ -1,6 +1,7 @@
 package id.omi.absensicafe.data
 
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import id.omi.absensicafe.data.model.AttendanceRecord
 import id.omi.absensicafe.data.model.Employee
 import id.omi.absensicafe.data.model.RosterDay
@@ -10,6 +11,9 @@ import id.omi.absensicafe.domain.AttendanceRules
 import id.omi.absensicafe.domain.NameSort
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import java.time.Duration
 import java.time.Instant
@@ -44,15 +48,53 @@ class AttendanceRepository(
     private val records get() = cafe.collection("records")
     private val devices get() = cafe.collection("devices")
 
+    private val _bacaanGagal = MutableStateFlow<String?>(null)
+
+    /**
+     * Galat bacaan Firestore yang perlu ditindak, atau null selama sehat.
+     *
+     * Galat jaringan sengaja tidak masuk ke sini. Firestore melayani pendengar
+     * dari simpanan lokal saat internet mati, jadi luring bukan kegagalan dan
+     * tidak boleh memunculkan peringatan di depan karyawan.
+     */
+    val bacaanGagal: StateFlow<String?> = _bacaanGagal.asStateFlow()
+
+    /**
+     * Mencatat galat pendengar, dan membersihkannya begitu snapshot berhasil.
+     *
+     * Tanpa ini `snap` yang null diam-diam menjadi daftar kosong, sehingga
+     * "akses ditolak" tampil persis sama dengan "belum ada data".
+     */
+    private fun catat(galat: FirebaseFirestoreException?) {
+        if (galat == null) {
+            _bacaanGagal.value = null
+            return
+        }
+        val pesan = when (galat.code) {
+            FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                "Akses ditolak. Akun kios ini belum punya dokumen " +
+                    "users/{uid} berperan \"kiosk\" di Firestore."
+            FirebaseFirestoreException.Code.UNAUTHENTICATED ->
+                "Sesi login berakhir. Keluar lalu masuk lagi dengan akun kios."
+            FirebaseFirestoreException.Code.FAILED_PRECONDITION ->
+                "Firestore menolak kueri ini karena indeksnya belum ada."
+            FirebaseFirestoreException.Code.UNAVAILABLE -> null
+            else -> "Gagal membaca data dari Firestore (${galat.code})."
+        }
+        if (pesan != null) _bacaanGagal.value = pesan
+    }
+
     fun settingsFlow(): Flow<Settings> = callbackFlow {
-        val reg = cafe.addSnapshotListener { snap, _ ->
+        val reg = cafe.addSnapshotListener { snap, galat ->
+            catat(galat)
             trySend(if (snap != null && snap.exists()) snap.toSettings() else Settings())
         }
         awaitClose { reg.remove() }
     }
 
     fun employeesFlow(ascending: Boolean = true): Flow<List<Employee>> = callbackFlow {
-        val reg = employees.addSnapshotListener { snap, _ ->
+        val reg = employees.addSnapshotListener { snap, galat ->
+            catat(galat)
             val list = snap?.documents.orEmpty()
                 .mapNotNull { it.toEmployee() }
                 .filter { it.active }
@@ -63,7 +105,8 @@ class AttendanceRepository(
     }
 
     fun shiftsFlow(): Flow<List<Shift>> = callbackFlow {
-        val reg = shifts.addSnapshotListener { snap, _ ->
+        val reg = shifts.addSnapshotListener { snap, galat ->
+            catat(galat)
             val list = snap?.documents.orEmpty()
                 .mapNotNull { it.toShift() }
                 .sortedWith(compareBy({ it.start }, { it.name }))
@@ -76,7 +119,8 @@ class AttendanceRepository(
     fun rosterFlow(dates: List<String>): Flow<Map<String, RosterDay>> = callbackFlow {
         val hasil = mutableMapOf<String, RosterDay>()
         val regs = dates.map { tanggal ->
-            roster.document(tanggal).addSnapshotListener { snap, _ ->
+            roster.document(tanggal).addSnapshotListener { snap, galat ->
+                catat(galat)
                 hasil[tanggal] = snap?.takeIf { it.exists() }?.toRosterDay()
                     ?: RosterDay(tanggal)
                 trySend(hasil.toMap())
@@ -99,7 +143,8 @@ class AttendanceRepository(
             return@callbackFlow
         }
         val reg = records.whereIn("date", dates.take(10))
-            .addSnapshotListener { snap, _ ->
+            .addSnapshotListener { snap, galat ->
+                catat(galat)
                 val list = snap?.documents.orEmpty()
                     .mapNotNull { it.toRecord() }
                     .sortedByDescending { it.checkIn?.at }

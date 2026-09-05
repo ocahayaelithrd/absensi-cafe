@@ -230,6 +230,19 @@ private fun GridScreen(
             return@Column
         }
 
+        val gagal = state.bacaanGagal
+        if (gagal != null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    gagal,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+            }
+            return@Column
+        }
+
         if (state.employees.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
