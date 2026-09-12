@@ -282,10 +282,21 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                 else -> jarak > settings.geoRadiusMeters
             }
 
-            val wajah = periksaWajah(photo, s.employee, settings)
+            /*
+             * Karyawan dibaca ulang dari state, bukan memakai rekaman saat
+             * namanya diketuk. Wajah yang baru didaftarkan admin beberapa detik
+             * sebelumnya belum tentu ikut terbawa di rekaman itu, dan templat
+             * yang terlewat membuat pemeriksaan dilewati diam-diam seolah
+             * karyawannya belum pernah mendaftar.
+             */
+            val karyawan = state.value.employees
+                .firstOrNull { it.id == s.employee.id }
+                ?: s.employee
+
+            val wajah = periksaWajah(photo, karyawan, settings)
 
             val pending = PendingPunch(
-                employee = s.employee,
+                employee = karyawan,
                 side = s.side,
                 pinBy = s.pinBy,
                 photo = photo,
