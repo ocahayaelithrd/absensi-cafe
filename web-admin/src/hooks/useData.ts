@@ -295,6 +295,28 @@ export function useRecords(from: string, to: string): AttendanceRecord[] {
   return list;
 }
 
+
+/**
+ * Absen yang sudah masuk tapi belum ada pulangnya, tanpa batas tanggal.
+ *
+ * Disaring di server dengan `outAt == null`, bukan dengan mengambil rentang
+ * tanggal lalu menyaring di layar: tiap catatan memuat foto base64 sekitar
+ * 19 KB, jadi menarik sebulan penuh hanya untuk menemukan beberapa yang
+ * menggantung akan memberatkan halaman yang paling sering dibuka.
+ *
+ * Aman memakai `== null` karena penulisnya selalu menaruh field itu — lihat
+ * `Mappers.kt`, yang menulis `outAt` bernilai null saat absen belum ditutup.
+ * Firestore tidak mencocokkan dokumen yang field-nya tidak ada sama sekali.
+ */
+export function useOpenRecords(): AttendanceRecord[] {
+  const [list, setList] = useState<AttendanceRecord[]>([]);
+  useEffect(() => {
+    const q = query(recordsCol(), where("outAt", "==", null));
+    return onSnapshot(q, (snap) => setList(snap.docs.map(toRecord)));
+  }, []);
+  return list;
+}
+
 export interface KioskDevice {
   id: string;
   label: string;

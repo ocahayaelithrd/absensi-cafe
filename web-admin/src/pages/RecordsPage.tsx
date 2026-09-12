@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   useEmployeeNames,
   useEmployees,
@@ -19,9 +20,16 @@ export default function RecordsPage() {
   const names = useEmployeeNames(employees);
   const shifts = useShifts();
 
+  /*
+   * Rentang tanggal bisa datang dari tautan, dipakai dashboard untuk membawa
+   * admin langsung ke absen yang belum ada jam pulangnya. Hanya dibaca sebagai
+   * nilai awal — sesudahnya isian tanggal yang berkuasa, supaya mengubahnya
+   * tidak berkelahi dengan isi URL.
+   */
+  const [searchParams] = useSearchParams();
   const hariIni = formatDate(new Date());
-  const [from, setFrom] = useState(hariIni);
-  const [to, setTo] = useState(hariIni);
+  const [from, setFrom] = useState(searchParams.get("dari") || hariIni);
+  const [to, setTo] = useState(searchParams.get("sampai") || hariIni);
   const [filterKaryawan, setFilterKaryawan] = useState("");
 
   const records = useRecords(from, to);

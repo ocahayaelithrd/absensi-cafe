@@ -4,6 +4,7 @@ import {
   useDevices,
   useEmployeeNames,
   useEmployees,
+  useOpenRecords,
   useRecords,
   useRoster,
   useSettings,
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const devices = useDevices();
   const roster = useRoster(useMemo(() => [hariIni, kemarin], [hariIni, kemarin]));
   const records = useRecords(kemarin, hariIni);
+  const openRecords = useOpenRecords();
 
   const hariIniRecords = records.filter((r) => r.date === hariIni);
   const dijadwalkan = employees.filter((e) => {
@@ -33,7 +35,29 @@ export default function DashboardPage() {
   });
   const sudahAbsen = new Set(hariIniRecords.map((r) => r.employeeId));
   const belumDatang = dijadwalkan.filter((e) => !sudahAbsen.has(e.id));
-  const masihBekerja = records.filter((r) => r.checkIn && !r.checkOut);
+  /*
+   * Batas sebuah absen masuk dianggap terlupakan, bukan sedang berjalan.
+   *
+   * Lebih pendek daripada MAX_OPEN 18 jam di tablet dengan sengaja: tablet
+   * memakai angka itu untuk memutuskan apakah masih boleh menutup absen,
+   * sedangkan di sini tujuannya memberi tahu admin selagi jam pulangnya masih
+   * bisa diingat orang.
+   */
+  const BATAS_TERLUPAKAN_JAM = 8;
+  const batasMs = BATAS_TERLUPAKAN_JAM * 3600_000;
+  const sekarang = Date.now();
+
+  const terlupakan = openRecords
+    .filter((r) => r.checkIn && sekarang - r.checkIn.at.getTime() > batasMs)
+    .sort((a, b) => a.checkIn!.at.getTime() - b.checkIn!.at.getTime());
+
+  /*
+   * Yang sudah lewat batas pindah ke panel "Belum absen pulang", supaya satu
+   * absen tidak muncul di dua tempat dengan arti yang bertentangan.
+   */
+  const masihBekerja = records.filter(
+    (r) => r.checkIn && !r.checkOut && sekarang - r.checkIn.at.getTime() <= batasMs
+  );
   const telatHariIni = hariIniRecords.filter((r) => r.lateMinutes > 0);
 
   const perluPerhatian: string[] = [];
@@ -82,6 +106,34 @@ export default function DashboardPage() {
         <Kartu label="Belum datang" nilai={String(belumDatang.length)} />
         <Kartu label="Telat hari ini" nilai={String(telatHariIni.length)} />
       </div>
+
+      {terlupakan.length > 0 && (
+        <div className="card">
+          <h2>Belum absen pulang</h2>
+          <p className="muted">
+            Absen masuk tanpa jam pulang lebih dari {BATAS_TERLUPAKAN_JAM} jam. Hari
+            kerjanya terhitung nol menit sampai jamnya dikoreksi.
+          </p>
+          <table>
+            <tbody>
+              {terlupakan.map((r) => (
+                <tr key={r.id}>
+                  <td>{names.get(r.employeeId) ?? "(karyawan dihapus)"}</td>
+                  <td className="muted">
+                    {shifts.find((s) => s.id === r.shiftId)?.name ?? "di luar jadwal"}
+                  </td>
+                  <td className="num">
+                    {r.date} masuk {jam(r.checkIn?.at)}
+                  </td>
+                  <td className="num">
+                    <Link to={`/absensi?dari=${r.date}&sampai=${r.date}`}>Koreksi</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="grid cols-2">
         <div className="card">
