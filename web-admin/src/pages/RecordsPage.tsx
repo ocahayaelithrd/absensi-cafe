@@ -176,8 +176,18 @@ export function Tanda({ record }: { record: AttendanceRecord }) {
   if (record.checkIn?.outsideGeofence || record.checkOut?.outsideGeofence) {
     tanda.push({ teks: "di luar area", kelas: "bad" });
   }
-  if (record.checkIn?.faceFlag || record.checkOut?.faceFlag) {
+  /*
+   * Wajah yang tidak terdeteksi di foto dibedakan dari wajah yang terbaca tapi
+   * kemiripannya di bawah ambang. Keduanya menyalakan `faceFlag`, tapi hanya
+   * yang kedua menuduh orangnya; yang pertama soal fotonya. Untuk perhitungan
+   * gaji, dua hal itu tidak boleh tampil sebagai tuduhan yang sama.
+   */
+  const wajahDitandai = [record.checkIn, record.checkOut].filter((p) => p?.faceFlag);
+  if (wajahDitandai.some((p) => p!.faceScore !== null)) {
     tanda.push({ teks: "wajah tidak cocok", kelas: "bad" });
+  }
+  if (wajahDitandai.some((p) => p!.faceScore === null)) {
+    tanda.push({ teks: "wajah tidak terdeteksi", kelas: "bad" });
   }
   if (record.earlyLeaveMinutes > 0) {
     tanda.push({ teks: `pulang cepat ${durasi(record.earlyLeaveMinutes)}`, kelas: "warn" });
